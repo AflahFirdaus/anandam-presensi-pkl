@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Presensi PKL
 
-## Getting Started
+Aplikasi presensi anak PKL berbasis web (Next.js App Router + MySQL).
 
-First, run the development server:
+## Fitur
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Auth**: login dengan cookie httpOnly + session di DB
+- **Role**: Admin (monitoring, set area/jam, kelola user) dan PKL (presensi masuk/pulang)
+- **Presensi**: foto dari kamera (capture ke canvas) + lokasi geolocation, validasi radius & accuracy
+- **Jam kerja**: admin set jam masuk/pulang; status TEPAT_WAKTU/TELAT (toleransi 15 menit), SESUAI/PULANG_CEPAT
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **Environment**
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+   Salin `.env.example` ke `.env` dan isi koneksi MySQL:
 
-## Learn More
+   ```
+   DB_HOST=localhost
+   DB_PORT=3306
+   DB_USER=root
+   DB_PASSWORD=...
+   DB_NAME=presensi_pkl
+   SESSION_COOKIE_NAME=presensi_session
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+2. **Database**
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   Buat database `presensi_pkl`, lalu jalankan migration (urut):
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+   - `migrations/001_create_users_sessions.sql`
+   - `migrations/002_create_settings.sql`
+   - `migrations/003_create_presensi.sql`
 
-## Deploy on Vercel
+   Jangan rename/delete file migration setelah di-push.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+3. **Seed admin (opsional)**
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+   Untuk membuat user admin pertama (username: `admin`, password: `admin123`):
+
+   ```bash
+   node scripts/seed-admin.js
+   ```
+
+4. **Jalankan**
+
+   ```bash
+   pnpm install
+   pnpm dev
+   ```
+
+   Buka [http://localhost:3000](http://localhost:3000). Login sebagai admin, lalu atur **Settings** (area lat/lng, radius, jam masuk/pulang) dan tambah user PKL di **User**.
+
+## Endpoint API
+
+- `POST /api/auth/login` — login
+- `POST /api/auth/logout` — logout
+- `GET /api/me` — user saat ini
+- `GET /api/settings` — area + jam (untuk presensi)
+- `PUT /api/admin/settings` — admin update area + jam
+- `GET /api/presensi/today` — presensi hari ini (PKL)
+- `POST /api/presensi/in` — presensi masuk (PKL)
+- `POST /api/presensi/out` — presensi pulang (PKL)
+- `GET /api/admin/presensi?date=YYYY-MM-DD` — daftar presensi per tanggal (admin)
+- `GET /api/admin/users` — daftar user (admin)
+- `POST /api/admin/users` — tambah user (admin)
+- `PUT /api/admin/users/[id]` — update user (admin)
