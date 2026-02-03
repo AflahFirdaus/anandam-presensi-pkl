@@ -20,6 +20,9 @@
 # production
 /build
 
+# uploads (foto presensi) - simpan di public/uploads
+/public/uploads/
+
 # misc
 .DS_Store
 *.pem

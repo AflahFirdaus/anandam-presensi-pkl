@@ -1,0 +1,45 @@
+import { getSessionFromRequest } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import pool from "@/lib/db";
+import type { PresensiListRow } from "@/lib/db";
+import AdminPresensiList from "./AdminPresensiList";
+import Version from "../components/Version";
+
+export default async function AdminPresensiPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string }>;
+}) {
+  const session = await getSessionFromRequest();
+  if (!session || session.user.role !== "ADMIN") redirect("/");
+  const { date } = await searchParams;
+  const tanggal = date ?? new Date().toISOString().slice(0, 10);
+  const [rows] = await pool.execute<PresensiListRow[]>(
+    `SELECT p.id, p.user_id, u.nama, u.username, p.jam_masuk, p.jam_keluar, p.masuk_status, p.keluar_status, p.foto_masuk_path, p.foto_keluar_path
+     FROM presensi p JOIN users u ON u.id = p.user_id WHERE p.tanggal = ? ORDER BY p.jam_masuk ASC`,
+    [tanggal]
+  );
+
+  const list = rows.map((r) => ({
+    id: r.id,
+    user_id: r.user_id,
+    nama: r.nama,
+    username: r.username,
+    jam_masuk: r.jam_masuk,
+    jam_keluar: r.jam_keluar,
+    masuk_status: r.masuk_status ?? null,
+    keluar_status: r.keluar_status ?? null,
+    foto_masuk_path: r.foto_masuk_path,
+    foto_keluar_path: r.foto_keluar_path,
+  }));
+
+  return (
+    <div className="animate-slide-up w-full">
+      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/50 sm:p-8">
+        <h1 className="mb-6 text-xl font-bold text-slate-800">Presensi per Tanggal</h1>
+        <AdminPresensiList initialDate={tanggal} initialList={list} />
+      </div>
+      <Version />
+    </div>
+  );
+}
