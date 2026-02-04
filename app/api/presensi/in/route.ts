@@ -20,10 +20,12 @@ export async function POST(request: NextRequest) {
   }
   try {
     const body = await request.json();
-    const { foto_base64, lat, lng, accuracy } = body;
-    if (!foto_base64 || lat == null || lng == null || accuracy == null) {
+    const { foto_base64, lat, lng, accuracy, status_kehadiran } = body; // Add status_kehadiran
+
+    // Validasi basic
+    if ((status_kehadiran !== "SAKIT" && !foto_base64) || lat == null || lng == null || accuracy == null) {
       return NextResponse.json(
-        { error: "foto_base64, lat, lng, accuracy wajib" },
+        { error: "foto_base64 (wajib jika tidak sakit), lat, lng, accuracy wajib" },
         { status: 400 }
       );
     }
@@ -49,13 +51,13 @@ export async function POST(request: NextRequest) {
       ? rawShifts
       : typeof rawShifts === "string"
         ? (() => {
-            try {
-              const p = JSON.parse(rawShifts) as { jam_masuk: string; jam_pulang: string }[];
-              return Array.isArray(p) ? p : [];
-            } catch {
-              return [];
-            }
-          })()
+          try {
+            const p = JSON.parse(rawShifts) as { jam_masuk: string; jam_pulang: string }[];
+            return Array.isArray(p) ? p : [];
+          } catch {
+            return [];
+          }
+        })()
         : [];
 
     const areaLat = Number(settings.area_lat);
@@ -67,12 +69,9 @@ export async function POST(request: NextRequest) {
 
     const distanceM = distanceMeters(areaLat, areaLng, userLat, userLng);
     const lokasiValid = isLocationValid(distanceM, acc, radiusM, MAX_ACCURACY_M);
-    if (!lokasiValid) {
-      return NextResponse.json(
-        { error: "Lokasi tidak valid (jarak atau accuracy melebihi batas)" },
-        { status: 400 }
-      );
-    }
+
+    // REMOVED: Strict location blocking
+    // if (!lokasiValid) { ... }
 
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
@@ -95,12 +94,31 @@ export async function POST(request: NextRequest) {
           break;
         }
       }
+
+      // If none matched, check if we just default to the first one or error?
+      // Existing logic was strict about window. 
+      // User request: "Presensi tidak ditolak berdasarkan lokasi". 
+      // It implies allowing attendance. 
+      // If we are outside window, originally it errored.
+      // But if user is late, they should be able to clock in as "TELAT"?
+      // The current logic: if matched, it sets matched. If !matched, it returns error.
+      // We should probably relax this if we want to allow "Late" attendance even outside window?
+      // Or keep time strictness? "Presensi dapat dilakukan dari mana saja" -> Location.
+      // Time restrictions might still apply. I will keep time logic as is for now unless "Sakit".
+
       if (!matched) {
-        return NextResponse.json(
-          { error: `Presensi masuk valid ${WINDOW_SEBELUM_MENIT} menit sebelum sampai ${WINDOW_SESUDAH_MENIT} menit setelah jam shift. Periksa jam shift yang diaktifkan admin.` },
-          { status: 400 }
-        );
+        // If SAKIT, maybe ignore time window?
+        if (status_kehadiran !== 'SAKIT') {
+          return NextResponse.json(
+            { error: `Presensi masuk valid ${WINDOW_SEBELUM_MENIT} menit sebelum sampai ${WINDOW_SESUDAH_MENIT} menit setelah jam shift. Periksa jam shift yang diaktifkan admin.` },
+            { status: 400 }
+          );
+        }
+        // If SAKIT, default to first shift or 08:00 just for recording?
+        // Let's safe fallback
+        matched = enabledShifts[0];
       }
+
       shiftJamMasuk = matched.jam_masuk;
       shiftJamPulang = matched.jam_pulang;
       const [h, m] = shiftJamMasuk.split(":").map(Number);
@@ -115,12 +133,16 @@ export async function POST(request: NextRequest) {
       jamMasukDate.setHours(h || 8, m || 0, 0, 0);
       const windowStart = new Date(jamMasukDate.getTime() - WINDOW_SEBELUM_MENIT * 60 * 1000);
       const windowEnd = new Date(jamMasukDate.getTime() + WINDOW_SESUDAH_MENIT * 60 * 1000);
-      if (now < windowStart || now > windowEnd) {
-        return NextResponse.json(
-          { error: `Presensi masuk valid ${WINDOW_SEBELUM_MENIT} menit sebelum sampai ${WINDOW_SESUDAH_MENIT} menit setelah jam yang ditentukan.` },
-          { status: 400 }
-        );
+
+      if (status_kehadiran !== 'SAKIT') {
+        if (now < windowStart || now > windowEnd) {
+          return NextResponse.json(
+            { error: `Presensi masuk valid ${WINDOW_SEBELUM_MENIT} menit sebelum sampai ${WINDOW_SESUDAH_MENIT} menit setelah jam yang ditentukan.` },
+            { status: 400 }
+          );
+        }
       }
+
       shiftJamMasuk = jamMasukStr.length === 5 ? jamMasukStr : "08:00";
       shiftJamPulang = String(settings.jam_pulang ?? "16:00").length === 5 ? String(settings.jam_pulang) : "16:00";
       const batasTelat = new Date(jamMasukDate.getTime() + TOLERANSI_TELAT_MENIT * 60 * 1000);
@@ -138,10 +160,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const fotoPath = await savePresensiPhoto(foto_base64, session.user.id, "masuk");
+    let fotoPath: string | null = null;
+    if (status_kehadiran !== "SAKIT") {
+      fotoPath = await savePresensiPhoto(foto_base64, session.user.id, "masuk");
+    }
+
+    // Default status attendance
+    const finalStatusKehadiran = (status_kehadiran === 'SAKIT') ? 'SAKIT' : 'HADIR';
 
     await pool.execute(
-      `INSERT INTO presensi (user_id, tanggal, jam_masuk, shift_jam_masuk, shift_jam_pulang, foto_masuk_path, masuk_lat, masuk_lng, masuk_accuracy, masuk_distance_m, masuk_status, masuk_lokasi_valid) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO presensi (
+        user_id, tanggal, jam_masuk, shift_jam_masuk, shift_jam_pulang, 
+        foto_masuk_path, masuk_lat, masuk_lng, masuk_accuracy, 
+        masuk_distance_m, masuk_status, masuk_lokasi_valid, status_kehadiran
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         session.user.id,
         today,
@@ -155,9 +187,16 @@ export async function POST(request: NextRequest) {
         distanceM,
         masukStatus,
         lokasiValid ? 1 : 0,
+        finalStatusKehadiran
       ]
     );
-    return NextResponse.json({ success: true, status: masukStatus });
+
+    return NextResponse.json({
+      success: true,
+      status: masukStatus,
+      via: lokasiValid ? "KANTOR" : "LUAR_KANTOR",
+      status_kehadiran: finalStatusKehadiran
+    });
   } catch (e) {
     console.error(e);
     return NextResponse.json({ error: "Server error" }, { status: 500 });

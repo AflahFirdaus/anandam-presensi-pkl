@@ -9,6 +9,7 @@ type PresensiToday = {
   jam_keluar: string | null;
   masuk_status: string | null;
   keluar_status: string | null;
+  status_kehadiran: string | null;
 } | null;
 
 export default function PresensiPage() {
@@ -31,6 +32,8 @@ export default function PresensiPage() {
     const data = await res.json();
     setToday(data.presensi ?? null);
   }, []);
+
+  const [isSakit, setIsSakit] = useState(false);
 
   useEffect(() => {
     loadToday().finally(() => setLoading(false));
@@ -97,31 +100,52 @@ export default function PresensiPage() {
       setMessage({ type: "err", text: "Lokasi belum didapat. Izinkan akses lokasi." });
       return;
     }
-    const foto = capturePhoto();
-    if (!foto) {
-      setMessage({ type: "err", text: "Gagal mengambil foto dari kamera." });
-      return;
+    let foto: string | null = null;
+    if (!isSakit || type === "out") {
+      foto = capturePhoto();
+      if (!foto) {
+        setMessage({ type: "err", text: "Gagal mengambil foto dari kamera." });
+        return;
+      }
     }
     setSubmitType(type);
     setMessage(null);
     try {
       const url = type === "in" ? "/api/presensi/in" : "/api/presensi/out";
+      const bodyPayload: any = {
+        foto_base64: foto,
+        lat: location.lat,
+        lng: location.lng,
+        accuracy: location.accuracy,
+      };
+
+      if (type === "in" && isSakit) {
+        bodyPayload.status_kehadiran = "SAKIT";
+      }
+
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          foto_base64: foto,
-          lat: location.lat,
-          lng: location.lng,
-          accuracy: location.accuracy,
-        }),
+        body: JSON.stringify(bodyPayload),
       });
       const data = await res.json();
       if (!res.ok) {
         setMessage({ type: "err", text: data.error ?? "Gagal presensi" });
         return;
       }
-      setMessage({ type: "ok", text: type === "in" ? "Presensi masuk berhasil." : "Presensi pulang berhasil." });
+
+      let successMsg = "";
+      if (type === "in") {
+        if (data.status_kehadiran === "SAKIT") {
+          successMsg = "Data Sakit berhasil dikirim.";
+        } else {
+          successMsg = `Presensi masuk berhasil (${data.via === "KANTOR" ? "Di Kantor" : "Di Luar Kantor"}).`;
+        }
+      } else {
+        successMsg = `Presensi pulang berhasil (${data.via === "KANTOR" ? "Di Kantor" : "Di Luar Kantor"}).`;
+      }
+
+      setMessage({ type: "ok", text: successMsg });
       await loadToday();
     } catch {
       setMessage({ type: "err", text: "Koneksi gagal" });
@@ -191,30 +215,65 @@ export default function PresensiPage() {
           </div>
         )}
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-col gap-4">
           {!today?.jam_masuk && (
-            <button
-              type="button"
-              onClick={() => handlePresensi("in")}
-              disabled={!!submitType || !location}
-              className="rounded-xl bg-green-600 px-5 py-2.5 font-medium text-white shadow-md shadow-green-600/25 transition hover:bg-green-700 hover:shadow-green-600/30 disabled:opacity-50 disabled:shadow-none"
-            >
-              {submitType === "in" ? "Memproses..." : "Presensi Masuk"}
-            </button>
+            <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3">
+              <label className="flex cursor-pointer items-center gap-3 rounded-xl bg-slate-50 p-3">
+                <input
+                  type="checkbox"
+                  className="peer sr-only"
+                  checked={isSakit}
+                  onChange={(e) => setIsSakit(e.target.checked)}
+                />
+
+                <div
+                  className="relative h-6 w-11 rounded-full bg-slate-300
+                    after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full
+                    after:bg-white after:transition-all after:content-['']
+                    peer-checked:bg-red-600 peer-checked:after:translate-x-full
+                    peer-focus:ring-2 peer-focus:ring-red-300"
+                />
+
+                <span className="select-none text-sm font-medium text-slate-700">
+                  Saya Sakit (aktifkan jika sakit)
+                </span>
+              </label>
+            </div>
           )}
-          {today?.jam_masuk && !today?.jam_keluar && (
-            <button
-              type="button"
-              onClick={() => handlePresensi("out")}
-              disabled={!!submitType || !location}
-              className="rounded-xl bg-orange-600 px-5 py-2.5 font-medium text-white shadow-md shadow-orange-600/25 transition hover:bg-orange-700 hover:shadow-orange-600/30 disabled:opacity-50 disabled:shadow-none"
-            >
-              {submitType === "out" ? "Memproses..." : "Presensi Pulang"}
-            </button>
-          )}
-          {today?.jam_masuk && today?.jam_keluar && (
-            <p className="rounded-xl bg-slate-100 px-4 py-2.5 text-slate-600">Presensi hari ini sudah lengkap.</p>
-          )}
+
+          <div className="flex flex-wrap gap-3">
+            {!today?.jam_masuk && (
+              <button
+                type="button"
+                onClick={() => handlePresensi("in")}
+                disabled={!!submitType || !location}
+                className={`rounded-xl px-5 py-2.5 font-medium text-white shadow-md transition disabled:opacity-50 disabled:shadow-none ${isSakit
+                  ? "bg-red-600 shadow-red-600/25 hover:bg-red-700 hover:shadow-red-600/30"
+                  : "bg-green-600 shadow-green-600/25 hover:bg-green-700 hover:shadow-green-600/30"
+                  }`}
+              >
+                {submitType === "in" ? "Memproses..." : (isSakit ? "Kirim Keterangan Sakit" : "Presensi Masuk")}
+              </button>
+            )}
+            {today?.jam_masuk && !today?.jam_keluar && (
+              <button
+                type="button"
+                onClick={() => handlePresensi("out")}
+                disabled={!!submitType || !location || today.status_kehadiran === "SAKIT"}
+                className={`rounded-xl px-5 py-2.5 font-medium text-white shadow-md transition disabled:opacity-50 disabled:shadow-none ${today.status_kehadiran === "SAKIT"
+                    ? "bg-slate-400 cursor-not-allowed"
+                    : "bg-orange-600 shadow-orange-600/25 hover:bg-orange-700 hover:shadow-orange-600/30"
+                  }`}
+              >
+                {today.status_kehadiran === "SAKIT"
+                  ? "Sudah Izin Sakit"
+                  : (submitType === "out" ? "Memproses..." : "Presensi Pulang")}
+              </button>
+            )}
+            {today?.jam_masuk && today?.jam_keluar && (
+              <p className="rounded-xl bg-slate-100 px-4 py-2.5 text-slate-600">Presensi hari ini sudah lengkap.</p>
+            )}
+          </div>
         </div>
       </div>
     </div>

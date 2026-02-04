@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Parameter date harus YYYY-MM-DD" }, { status: 400 });
   }
   const [rows] = await pool.execute<PresensiListApiRow[]>(
-    `SELECT p.id, p.user_id, u.nama, u.username, p.tanggal, p.jam_masuk, p.jam_keluar, p.masuk_status, p.keluar_status, p.foto_masuk_path, p.foto_keluar_path
+    `SELECT p.id, p.user_id, u.nama, u.username, p.tanggal, p.jam_masuk, p.jam_keluar, p.masuk_status, p.keluar_status, p.masuk_lat, p.masuk_lng, p.keluar_lat, p.keluar_lng, p.foto_masuk_path, p.foto_keluar_path
      FROM presensi p
      JOIN users u ON u.id = p.user_id
      WHERE p.tanggal = ?
@@ -36,6 +36,10 @@ export async function GET(request: NextRequest) {
       jam_keluar: r.jam_keluar,
       masuk_status: r.masuk_status,
       keluar_status: r.keluar_status,
+      masuk_lat: r.masuk_lat,
+      masuk_lng: r.masuk_lng,
+      keluar_lat: r.keluar_lat,
+      keluar_lng: r.keluar_lng,
       foto_masuk_path: r.foto_masuk_path,
       foto_keluar_path: r.foto_keluar_path,
     })),

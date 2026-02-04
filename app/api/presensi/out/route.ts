@@ -89,18 +89,32 @@ export async function POST(request: NextRequest) {
     const acc = Number(accuracy);
     const distanceM = distanceMeters(areaLat, areaLng, userLat, userLng);
     const lokasiValid = isLocationValid(distanceM, acc, radiusM, MAX_ACCURACY_M);
-    if (!lokasiValid) {
-      return NextResponse.json(
-        { error: "Lokasi tidak valid (jarak atau accuracy melebihi batas)" },
-        { status: 400 }
-      );
-    }
+    // REMOVED: strict blocking
+    // if (!lokasiValid) { ... }
 
     const fotoPath = await savePresensiPhoto(foto_base64, session.user.id, "keluar");
 
+    // Hitung total jam kerja
+    let totalJamKerja = "00:00:00";
+    if (presensiRow.jam_masuk) {
+      const masukDate = new Date(presensiRow.jam_masuk);
+      const diffMs = now.getTime() - masukDate.getTime();
+      if (diffMs > 0) {
+        const diffSeconds = Math.floor(diffMs / 1000);
+        const hours = Math.floor(diffSeconds / 3600);
+        const minutes = Math.floor((diffSeconds % 3600) / 60);
+        const seconds = diffSeconds % 60;
+        totalJamKerja = [
+          hours.toString().padStart(2, "0"),
+          minutes.toString().padStart(2, "0"),
+          seconds.toString().padStart(2, "0"),
+        ].join(":");
+      }
+    }
+
     await pool.execute(
-      `UPDATE presensi SET jam_keluar=?, foto_keluar_path=?, keluar_lat=?, keluar_lng=?, keluar_accuracy=?, keluar_distance_m=?, keluar_status=?, keluar_lokasi_valid=? WHERE user_id=? AND tanggal=?`,
-      [now, fotoPath, userLat, userLng, acc, distanceM, keluarStatus, lokasiValid ? 1 : 0, session.user.id, today]
+      `UPDATE presensi SET jam_keluar=?, foto_keluar_path=?, keluar_lat=?, keluar_lng=?, keluar_accuracy=?, keluar_distance_m=?, keluar_status=?, keluar_lokasi_valid=?, total_jam_kerja=? WHERE user_id=? AND tanggal=?`,
+      [now, fotoPath, userLat, userLng, acc, distanceM, keluarStatus, lokasiValid ? 1 : 0, totalJamKerja, session.user.id, today]
     );
     return NextResponse.json({ success: true, status: keluarStatus });
   } catch (e) {

@@ -110,6 +110,7 @@ export function SidebarNav({
     { href: "/admin", label: "Presensi", icon: <IconCalendar /> },
     { href: "/admin/settings", label: "Pengaturan", icon: <IconSettings /> },
     { href: "/admin/users", label: "User", icon: <IconUsers /> },
+    
   ];
 
   const pklItems: NavItem[] = [
@@ -188,10 +189,9 @@ export function SidebarNav({
             <p className="truncate font-medium text-slate-200">{user.nama}</p>
             <p>{user.role}</p>
           </div>
-          <LogoutButton />
+          <div className="mb-16"><LogoutButton /></div>
         </div>
       </aside>
-
       {/* Area utama: di mobile saat open tidak geser (sidebar overlay); di desktop geser pl-56 */}
       <main
         className={`min-w-0 flex-1 transition-all duration-300 ${
