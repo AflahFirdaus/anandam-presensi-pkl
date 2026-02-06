@@ -110,7 +110,7 @@ export function SidebarNav({
     { href: "/admin", label: "Presensi", icon: <IconCalendar /> },
     { href: "/admin/settings", label: "Pengaturan", icon: <IconSettings /> },
     { href: "/admin/users", label: "User", icon: <IconUsers /> },
-    
+
   ];
 
   const pklItems: NavItem[] = [
@@ -140,9 +140,8 @@ export function SidebarNav({
 
       {/* Sidebar: geser kiri saat tutup, sama untuk mobile & desktop */}
       <aside
-        className={`fixed left-0 top-0 z-30 flex h-screen w-56 flex-col bg-slate-900 text-slate-200 shadow-xl transition-transform duration-300 ease-out ${
-          open ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed left-0 top-0 z-30 flex h-screen w-56 flex-col bg-slate-900 text-slate-200 shadow-xl transition-transform duration-300 ease-out ${open ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         <div className="flex h-auto flex-col items-start gap-1 border-b border-slate-700/60 px-4 py-3">
           <div className="flex flex-col items-start">
@@ -174,9 +173,8 @@ export function SidebarNav({
                 key={item.href}
                 href={item.href}
                 onClick={onNavClick}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
-                  isActive ? "bg-blue-600 text-white shadow-md" : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                }`}
+                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${isActive ? "bg-blue-600 text-white shadow-md" : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  }`}
               >
                 {item.icon}
                 {item.label}
@@ -184,7 +182,7 @@ export function SidebarNav({
             );
           })}
         </nav>
-        <div className="border-t border-slate-700/60 p-3">
+        <div className="border-t border-slate-700/60 p-3 mb-16">
           <div className="mb-2 rounded-lg bg-slate-800/50 px-3 py-2 text-xs text-slate-400">
             <p className="truncate font-medium text-slate-200">{user.nama}</p>
             <p>{user.role}</p>
@@ -194,9 +192,8 @@ export function SidebarNav({
       </aside>
       {/* Area utama: di mobile saat open tidak geser (sidebar overlay); di desktop geser pl-56 */}
       <main
-        className={`min-w-0 flex-1 transition-all duration-300 ${
-          open && !isMobile ? "pl-56" : "pl-0"
-        }`}
+        className={`min-w-0 flex-1 transition-all duration-300 ${open && !isMobile ? "pl-56" : "pl-0"
+          }`}
       >
         <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 shadow-sm">
           <button

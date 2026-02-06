@@ -9,7 +9,7 @@ export default async function AdminSettingsPage() {
   const session = await getSessionFromRequest();
   if (!session || session.user.role !== "ADMIN") redirect("/");
   const [rows] = await pool.execute<SettingsFormRow[]>(
-    "SELECT area_name, area_lat, area_lng, area_radius_m, jam_masuk, jam_pulang, schedule_type, enabled_shifts FROM settings ORDER BY id DESC LIMIT 1"
+    "SELECT area_name, area_lat, area_lng, area_radius_m, jam_masuk, jam_pulang, schedule_type, enabled_shifts, force_holiday_date FROM settings ORDER BY id DESC LIMIT 1"
   );
   const row = rows[0] ?? null;
   const rawEnabled = row?.enabled_shifts;
@@ -17,35 +17,39 @@ export default async function AdminSettingsPage() {
     ? rawEnabled
     : typeof rawEnabled === "string"
       ? (() => {
-          try {
-            const p = JSON.parse(rawEnabled) as { jam_masuk: string; jam_pulang: string }[];
-            return Array.isArray(p) ? p : [];
-          } catch {
-            return [];
-          }
-        })()
+        try {
+          const p = JSON.parse(rawEnabled) as { jam_masuk: string; jam_pulang: string }[];
+          return Array.isArray(p) ? p : [];
+        } catch {
+          return [];
+        }
+      })()
       : [];
   const settings = row
     ? {
-        area_name: row.area_name ?? "",
-        area_lat: row.area_lat ?? "",
-        area_lng: row.area_lng ?? "",
-        area_radius_m: row.area_radius_m ?? 100,
-        jam_masuk: row.jam_masuk ?? "08:00",
-        jam_pulang: row.jam_pulang ?? "16:00",
-        schedule_type: (row.schedule_type as "WEEKDAY" | "SATURDAY" | "SUNDAY") ?? "WEEKDAY",
-        enabled_shifts: enabledShifts as { jam_masuk: string; jam_pulang: string }[],
-      }
+      area_name: row.area_name ?? "",
+      area_lat: row.area_lat ?? "",
+      area_lng: row.area_lng ?? "",
+      area_radius_m: row.area_radius_m ?? 100,
+      jam_masuk: row.jam_masuk ?? "08:00",
+      jam_pulang: row.jam_pulang ?? "16:00",
+      schedule_type: (row.schedule_type as "WEEKDAY" | "SATURDAY" | "SUNDAY") ?? "WEEKDAY",
+      enabled_shifts: enabledShifts as { jam_masuk: string; jam_pulang: string }[],
+      force_holiday_current: row.force_holiday_date
+        ? new Date(row.force_holiday_date).toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" }) === new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" })
+        : false,
+    }
     : {
-        area_name: "",
-        area_lat: "",
-        area_lng: "",
-        area_radius_m: 100,
-        jam_masuk: "08:00",
-        jam_pulang: "16:00",
-        schedule_type: "WEEKDAY" as const,
-        enabled_shifts: [] as { jam_masuk: string; jam_pulang: string }[],
-      };
+      area_name: "",
+      area_lat: "",
+      area_lng: "",
+      area_radius_m: 100,
+      jam_masuk: "08:00",
+      jam_pulang: "16:00",
+      schedule_type: "WEEKDAY" as const,
+      enabled_shifts: [] as { jam_masuk: string; jam_pulang: string }[],
+      force_holiday_current: false,
+    };
 
   return (
     <div className="animate-slide-up w-full">

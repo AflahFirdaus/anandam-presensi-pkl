@@ -3,7 +3,7 @@
  * Senin–Jumat, Sabtu, Minggu/Hari Libur.
  */
 
-export type ScheduleType = "WEEKDAY" | "SATURDAY" | "SUNDAY";
+export type ScheduleType = "WEEKDAY" | "SATURDAY" | "SUNDAY" | "HOLIDAY";
 
 export interface ShiftOption {
   jam_masuk: string; // "08:00"
@@ -25,8 +25,13 @@ export const SATURDAY_SHIFTS: ShiftOption[] = [
   { jam_masuk: "13:00", jam_pulang: "21:00", label: "13:00 - 21:00" },
 ];
 
-/** Minggu / Hari Libur: 10 - 19 */
+/** Minggu */
 export const SUNDAY_SHIFTS: ShiftOption[] = [
+  { jam_masuk: "10:00", jam_pulang: "19:00", label: "10:00 - 19:00" },
+];
+
+/** Hari Libur */
+export const HOLIDAY_SHIFTS: ShiftOption[] = [
   { jam_masuk: "10:00", jam_pulang: "19:00", label: "10:00 - 19:00" },
 ];
 
@@ -34,6 +39,7 @@ export const SCHEDULE_LABELS: Record<ScheduleType, string> = {
   WEEKDAY: "Senin - Jumat",
   SATURDAY: "Sabtu",
   SUNDAY: "Minggu / Hari Libur",
+  HOLIDAY: "Hari Libur",
 };
 
 export function getShiftsByScheduleType(type: ScheduleType): ShiftOption[] {
@@ -44,6 +50,8 @@ export function getShiftsByScheduleType(type: ScheduleType): ShiftOption[] {
       return SATURDAY_SHIFTS;
     case "SUNDAY":
       return SUNDAY_SHIFTS;
+    case "HOLIDAY":
+      return HOLIDAY_SHIFTS;
     default:
       return WEEKDAY_SHIFTS;
   }

@@ -28,7 +28,10 @@ export default function PresensiPage() {
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const loadToday = useCallback(async () => {
-    const res = await fetch("/api/presensi/today");
+    const res = await fetch("/api/presensi/today", {
+      cache: "no-store",
+      credentials: "include",
+    });
     const data = await res.json();
     setToday(data.presensi ?? null);
   }, []);
@@ -84,15 +87,44 @@ export default function PresensiPage() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || !stream) return null;
+
     const w = video.videoWidth;
     const h = video.videoHeight;
     if (!w || !h) return null;
-    canvas.width = w;
-    canvas.height = h;
+
+    const targetAspectRatio = 9 / 16;
+    let finalW = w;
+    let finalH = h;
+    let sx = 0;
+    let sy = 0;
+
+    // If current aspect ratio is wider than target (e.g. landscape vs portrait)
+    // We crop the width (sides)
+    if (w / h > targetAspectRatio) {
+      finalW = h * targetAspectRatio;
+      finalH = h;
+      sx = (w - finalW) / 2;
+      sy = 0;
+    } else {
+      // If thinner/taller (unlikely for mobile camera issues described, but good to handle)
+      // Crop height (top/bottom)
+      finalW = w;
+      finalH = w / targetAspectRatio;
+      sx = 0;
+      sy = (h - finalH) / 2;
+    }
+
+    canvas.width = finalW;
+    canvas.height = finalH;
+
     const ctx = canvas.getContext("2d");
     if (!ctx) return null;
-    ctx.drawImage(video, 0, 0);
-    return canvas.toDataURL("image/jpeg", 0.85);
+
+    // Draw cropped image
+    ctx.drawImage(video, sx, sy, finalW, finalH, 0, 0, finalW, finalH);
+
+    // Return high quality jpeg
+    return canvas.toDataURL("image/jpeg", 0.9);
   }
 
   async function handlePresensi(type: "in" | "out") {
@@ -261,8 +293,8 @@ export default function PresensiPage() {
                 onClick={() => handlePresensi("out")}
                 disabled={!!submitType || !location || today.status_kehadiran === "SAKIT"}
                 className={`rounded-xl px-5 py-2.5 font-medium text-white shadow-md transition disabled:opacity-50 disabled:shadow-none ${today.status_kehadiran === "SAKIT"
-                    ? "bg-slate-400 cursor-not-allowed"
-                    : "bg-orange-600 shadow-orange-600/25 hover:bg-orange-700 hover:shadow-orange-600/30"
+                  ? "bg-slate-400 cursor-not-allowed"
+                  : "bg-orange-600 shadow-orange-600/25 hover:bg-orange-700 hover:shadow-orange-600/30"
                   }`}
               >
                 {today.status_kehadiran === "SAKIT"

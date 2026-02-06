@@ -4,6 +4,8 @@ import type { SettingsAreaRow, IdRow } from "@/lib/db";
 import { getSessionFromRequest } from "@/lib/auth";
 import { distanceMeters, isLocationValid } from "@/lib/geo";
 import { savePresensiPhoto } from "@/lib/photo";
+// import { isHoliday } from "@/lib/holidays";
+import { getShiftsByScheduleType } from "@/lib/shifts";
 
 const TOLERANSI_TELAT_MENIT = 15;
 const WINDOW_SEBELUM_MENIT = 15;
@@ -31,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     const [setRows] = await pool.execute<SettingsAreaRow[]>(
-      "SELECT area_lat, area_lng, area_radius_m, jam_masuk, jam_pulang, enabled_shifts FROM settings ORDER BY id DESC LIMIT 1"
+      "SELECT area_lat, area_lng, area_radius_m, jam_masuk, jam_pulang, enabled_shifts, force_holiday_date FROM settings ORDER BY id DESC LIMIT 1"
     );
     const settings = setRows[0];
     if (
@@ -70,84 +72,77 @@ export async function POST(request: NextRequest) {
     const distanceM = distanceMeters(areaLat, areaLng, userLat, userLng);
     const lokasiValid = isLocationValid(distanceM, acc, radiusM, MAX_ACCURACY_M);
 
-    // REMOVED: Strict location blocking
-    // if (!lokasiValid) { ... }
 
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
+    const todayJakarta = now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+
+    // Cek hari libur dari toggle (tanggal disimpan timezone Jakarta)
+    const forceHolidayStr = settings.force_holiday_date
+      ? (typeof settings.force_holiday_date === "string"
+        ? settings.force_holiday_date.slice(0, 10)
+        : new Date(settings.force_holiday_date).toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" }))
+      : null;
+    const isHolidayToday = forceHolidayStr === todayJakarta;
+
+    let activeShifts: { jam_masuk: string; jam_pulang: string }[] = [];
+
+    if (isHolidayToday) {
+      activeShifts = getShiftsByScheduleType("HOLIDAY");
+    } else {
+      const day = now.getDay(); // 0 = Sunday, 1 = Monday, ...
+      if (day === 0) {
+        activeShifts = getShiftsByScheduleType("SUNDAY");
+      } else if (day === 6) {
+        activeShifts = getShiftsByScheduleType("SATURDAY");
+      } else {
+        activeShifts = getShiftsByScheduleType("WEEKDAY");
+      }
+    }
 
     let shiftJamMasuk: string;
     let shiftJamPulang: string;
     let masukStatus: "TEPAT_WAKTU" | "TELAT";
 
-    /** Jendela presensi masuk: 15 menit sebelum s/d 45 menit setelah jam shift (lewat dari itu tetap bisa absen dengan status telat). */
-    if (enabledShifts.length > 0) {
-      let matched: { jam_masuk: string; jam_pulang: string } | null = null;
-      for (const shift of enabledShifts) {
+    let matched: { jam_masuk: string; jam_pulang: string } | null = null;
+
+    if (activeShifts.length > 0) {
+      for (const shift of activeShifts) {
         const [h, m] = String(shift.jam_masuk).split(":").map(Number);
         const jamMasukDate = new Date(now);
         jamMasukDate.setHours(h || 0, m || 0, 0, 0);
+
         const windowStart = new Date(jamMasukDate.getTime() - WINDOW_SEBELUM_MENIT * 60 * 1000);
         const windowEnd = new Date(jamMasukDate.getTime() + WINDOW_SESUDAH_MENIT * 60 * 1000);
+
+        // Check fit in window
         if (now >= windowStart && now <= windowEnd) {
           matched = shift;
           break;
         }
       }
-
-      // If none matched, check if we just default to the first one or error?
-      // Existing logic was strict about window. 
-      // User request: "Presensi tidak ditolak berdasarkan lokasi". 
-      // It implies allowing attendance. 
-      // If we are outside window, originally it errored.
-      // But if user is late, they should be able to clock in as "TELAT"?
-      // The current logic: if matched, it sets matched. If !matched, it returns error.
-      // We should probably relax this if we want to allow "Late" attendance even outside window?
-      // Or keep time strictness? "Presensi dapat dilakukan dari mana saja" -> Location.
-      // Time restrictions might still apply. I will keep time logic as is for now unless "Sakit".
-
-      if (!matched) {
-        // If SAKIT, maybe ignore time window?
-        if (status_kehadiran !== 'SAKIT') {
-          return NextResponse.json(
-            { error: `Presensi masuk valid ${WINDOW_SEBELUM_MENIT} menit sebelum sampai ${WINDOW_SESUDAH_MENIT} menit setelah jam shift. Periksa jam shift yang diaktifkan admin.` },
-            { status: 400 }
-          );
-        }
-        // If SAKIT, default to first shift or 08:00 just for recording?
-        // Let's safe fallback
-        matched = enabledShifts[0];
-      }
-
-      shiftJamMasuk = matched.jam_masuk;
-      shiftJamPulang = matched.jam_pulang;
-      const [h, m] = shiftJamMasuk.split(":").map(Number);
-      const jamMasukDate = new Date(now);
-      jamMasukDate.setHours(h || 0, m || 0, 0, 0);
-      const batasTelat = new Date(jamMasukDate.getTime() + TOLERANSI_TELAT_MENIT * 60 * 1000);
-      masukStatus = now > batasTelat ? "TELAT" : "TEPAT_WAKTU";
-    } else {
-      const jamMasukStr = String(settings.jam_masuk ?? "08:00");
-      const [h, m] = jamMasukStr.split(":").map(Number);
-      const jamMasukDate = new Date(now);
-      jamMasukDate.setHours(h || 8, m || 0, 0, 0);
-      const windowStart = new Date(jamMasukDate.getTime() - WINDOW_SEBELUM_MENIT * 60 * 1000);
-      const windowEnd = new Date(jamMasukDate.getTime() + WINDOW_SESUDAH_MENIT * 60 * 1000);
-
-      if (status_kehadiran !== 'SAKIT') {
-        if (now < windowStart || now > windowEnd) {
-          return NextResponse.json(
-            { error: `Presensi masuk valid ${WINDOW_SEBELUM_MENIT} menit sebelum sampai ${WINDOW_SESUDAH_MENIT} menit setelah jam yang ditentukan.` },
-            { status: 400 }
-          );
-        }
-      }
-
-      shiftJamMasuk = jamMasukStr.length === 5 ? jamMasukStr : "08:00";
-      shiftJamPulang = String(settings.jam_pulang ?? "16:00").length === 5 ? String(settings.jam_pulang) : "16:00";
-      const batasTelat = new Date(jamMasukDate.getTime() + TOLERANSI_TELAT_MENIT * 60 * 1000);
-      masukStatus = now > batasTelat ? "TELAT" : "TEPAT_WAKTU";
     }
+
+    // Fallback logic if no match found
+    if (!matched) {
+      if (status_kehadiran !== 'SAKIT') {
+        return NextResponse.json(
+          { error: `Tidak ada jadwal presensi yang cocok saat ini. (Jendela waktu: -${WINDOW_SEBELUM_MENIT} / +${WINDOW_SESUDAH_MENIT} menit dari jam shift).` },
+          { status: 400 }
+        );
+      }
+      // If sakit, take the first available shift or default
+      matched = activeShifts.length > 0 ? activeShifts[0] : { jam_masuk: "08:00", jam_pulang: "16:00" };
+    }
+
+    shiftJamMasuk = matched.jam_masuk;
+    shiftJamPulang = matched.jam_pulang;
+
+    const [h, m] = shiftJamMasuk.split(":").map(Number);
+    const jamMasukDate = new Date(now);
+    jamMasukDate.setHours(h || 0, m || 0, 0, 0);
+    const batasTelat = new Date(jamMasukDate.getTime() + TOLERANSI_TELAT_MENIT * 60 * 1000);
+    masukStatus = now > batasTelat ? "TELAT" : "TEPAT_WAKTU";
 
     const [existing] = await pool.execute<IdRow[]>(
       "SELECT id FROM presensi WHERE user_id = ? AND tanggal = ?",
@@ -197,8 +192,18 @@ export async function POST(request: NextRequest) {
       via: lokasiValid ? "KANTOR" : "LUAR_KANTOR",
       status_kehadiran: finalStatusKehadiran
     });
-  } catch (e) {
+  } catch (e: unknown) {
     console.error(e);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    const err = e as { code?: string; sqlMessage?: string };
+    if (err?.code === "ER_BAD_FIELD_ERROR" || err?.sqlMessage?.includes("Unknown column")) {
+      return NextResponse.json(
+        { error: "Struktur tabel belum lengkap. Jalankan semua migration (004, 005, 006) di folder migrations." },
+        { status: 500 }
+      );
+    }
+    return NextResponse.json(
+      { error: err?.sqlMessage ? `Database: ${err.sqlMessage}` : "Server error" },
+      { status: 500 }
+    );
   }
 }

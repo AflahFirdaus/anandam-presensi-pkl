@@ -334,7 +334,7 @@ export default function AdminPresensiList({
               <tbody>
                 {filteredList.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
+                    <td colSpan={10} className="px-4 py-6 text-center text-slate-500">
                       Tidak ada hasil untuk &quot;{search.trim()}&quot;.
                     </td>
                   </tr>
@@ -358,7 +358,7 @@ export default function AdminPresensiList({
                       </td>
                       <td className="px-4 py-3">
                         <span className={r.masuk_status === "TELAT" ? "font-medium text-amber-600" : "font-medium text-green-700"}>
-                          {r.masuk_status ?? "-"}
+                          {labelMasuk(r.masuk_status)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-700">{r.masuk_lat ?? "-"}, {r.masuk_lng ?? "-"}</td>
@@ -380,7 +380,7 @@ export default function AdminPresensiList({
                             <img
                               src={`/${r.foto_masuk_path}`}
                               alt="Foto Masuk"
-                              onClick={() => setOpenPhoto(`/${r.foto_masuk_path}`)}
+                              onClick={() => setOpenPhoto(`/${r.foto_masuk_path}`)} // Set gambar ke state openPhoto
                               className="h-10 w-10 cursor-pointer rounded-md object-cover ring-1 ring-slate-200 hover:ring-blue-500"
                             />
                           )}
@@ -389,7 +389,7 @@ export default function AdminPresensiList({
                             <img
                               src={`/${r.foto_keluar_path}`}
                               alt="Foto Keluar"
-                              onClick={() => setOpenPhoto(`/${r.foto_keluar_path}`)}
+                              onClick={() => setOpenPhoto(`/${r.foto_keluar_path}`)} // Set gambar ke state openPhoto
                               className="h-10 w-10 cursor-pointer rounded-md object-cover ring-1 ring-slate-200 hover:ring-blue-500"
                             />
                           )}
@@ -412,7 +412,6 @@ export default function AdminPresensiList({
                 >
                   ×
                 </button>
-
                 <img
                   src={openPhoto}
                   alt="Bukti Presensi"

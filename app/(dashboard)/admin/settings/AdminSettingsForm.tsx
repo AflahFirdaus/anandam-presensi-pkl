@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import MapPicker from "./MapPicker";
 import {
   type ScheduleType,
   SCHEDULE_LABELS,
   getShiftsByScheduleType,
-  type ShiftOption,
 } from "@/lib/shifts";
+
 
 type Settings = {
   area_name: string;
@@ -18,46 +18,14 @@ type Settings = {
   jam_pulang: string;
   schedule_type: ScheduleType;
   enabled_shifts: { jam_masuk: string; jam_pulang: string }[];
+  force_holiday_current?: boolean; // New
 };
 
-function isShiftEnabled(
-  shift: ShiftOption,
-  enabled: { jam_masuk: string; jam_pulang: string }[]
-): boolean {
-  return enabled.some(
-    (e) => e.jam_masuk === shift.jam_masuk && e.jam_pulang === shift.jam_pulang
-  );
-}
 
 export default function AdminSettingsForm({ initial }: { initial: Settings }) {
   const [form, setForm] = useState(initial);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
-
-  const shifts = useMemo(
-    () => getShiftsByScheduleType(form.schedule_type),
-    [form.schedule_type]
-  );
-
-  function toggleShift(shift: ShiftOption, enabled: boolean) {
-    if (enabled) {
-      setForm((f) => ({
-        ...f,
-        enabled_shifts: [...f.enabled_shifts, { jam_masuk: shift.jam_masuk, jam_pulang: shift.jam_pulang }],
-      }));
-    } else {
-      setForm((f) => ({
-        ...f,
-        enabled_shifts: f.enabled_shifts.filter(
-          (e) => !(e.jam_masuk === shift.jam_masuk && e.jam_pulang === shift.jam_pulang)
-        ),
-      }));
-    }
-  }
-
-  function setScheduleType(st: ScheduleType) {
-    setForm((f) => ({ ...f, schedule_type: st, enabled_shifts: [] }));
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +35,7 @@ export default function AdminSettingsForm({ initial }: { initial: Settings }) {
       const res = await fetch("/api/admin/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           area_name: form.area_name || null,
           area_lat: form.area_lat ? Number(form.area_lat) : null,
@@ -76,6 +45,7 @@ export default function AdminSettingsForm({ initial }: { initial: Settings }) {
           jam_pulang: form.jam_pulang || null,
           schedule_type: form.schedule_type,
           enabled_shifts: form.enabled_shifts,
+          force_holiday_current: form.force_holiday_current,
         }),
       });
       const data = await res.json();
@@ -146,52 +116,43 @@ export default function AdminSettingsForm({ initial }: { initial: Settings }) {
       </div>
 
       <div className="border-t border-slate-200 pt-5">
-        <h2 className="mb-3 text-base font-semibold text-slate-800">Jadwal & Shift Hari Ini</h2>
-        <p className="mb-4 text-sm text-slate-600">
-          Pilih tipe jadwal, lalu aktifkan shift yang dipakai hari ini dengan switch.
-        </p>
-        <div className="mb-4">
-          <label className="mb-2 block text-sm font-medium text-slate-700">Jadwal hari ini</label>
-          <div className="flex flex-wrap gap-3">
-            {(["WEEKDAY", "SATURDAY", "SUNDAY"] as const).map((st) => (
-              <label key={st} className="flex cursor-pointer items-center gap-2">
-                <input
-                  type="radio"
-                  name="schedule_type"
-                  checked={form.schedule_type === st}
-                  onChange={() => setScheduleType(st)}
-                  className="h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm font-medium text-slate-700">{SCHEDULE_LABELS[st]}</span>
-              </label>
-            ))}
+        <h2 className="text-base font-semibold text-slate-800">Hari Libur?</h2>
+        <p className="mb-3 text-slate-600">Aktifkan switch untuk set hari libur</p>
+
+        <div className="mb-6 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <div>
+            <h3 className="font-medium text-blue-900">Mode Hari Libur</h3>
+            <p className="text-sm text-blue-700">Jika aktif, shift otomatis menjadi 10:00 - 19:00. Reset otomatis besok.</p>
           </div>
+          <label className="relative inline-flex cursor-pointer items-center">
+            <input
+              type="checkbox"
+              className="peer sr-only"
+              checked={!!form.force_holiday_current}
+              onChange={(e) => setForm(f => ({ ...f, force_holiday_current: e.target.checked }))}
+            />
+            <div className="peer h-6 w-11 rounded-full bg-slate-300 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-gray-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300"></div>
+          </label>
         </div>
-        <div>
-          <label className="mb-2 block text-sm font-medium text-slate-700">Shift aktif (centang untuk mengaktifkan)</label>
-          <ul className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-            {shifts.map((shift) => {
-              const enabled = isShiftEnabled(shift, form.enabled_shifts);
-              return (
-                <li key={shift.label} className="flex items-center justify-between gap-4">
-                  <span className="text-sm font-medium text-slate-800">{shift.label}</span>
-                  <label className="inline-flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={enabled}
-                      onChange={(e) => toggleShift(shift, e.target.checked)}
-                      className="peer sr-only"
-                    />
-                    <div className="relative h-6 w-11 shrink-0 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:border after:border-slate-300 after:bg-white after:transition-all after:content-[''] peer-checked:bg-blue-600 peer-checked:after:translate-x-full peer-checked:after:border-white peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500/30" />
-                    <span className="text-sm text-slate-600">{enabled ? "Aktif" : "Nonaktif"}</span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-          {form.enabled_shifts.length === 0 && (
-            <p className="mt-2 text-xs text-amber-600">Minimal aktifkan satu shift agar presensi bisa dilakukan.</p>
-          )}
+
+        <div className={`flex flex-col gap-4 transition-opacity ${form.force_holiday_current ? "pointer-events-none opacity-50" : ""}`}>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-slate-700">
+              Shift hari ini ({form.force_holiday_current ? "Hari Libur (aktif)" : SCHEDULE_LABELS[form.schedule_type]})
+            </label>
+            <ul className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+              {getShiftsByScheduleType(form.force_holiday_current ? "HOLIDAY" : form.schedule_type).map((shift) => {
+
+                return (
+                  <li key={shift.label} className="flex items-center justify-between gap-4">
+                    <span className="text-sm font-medium text-slate-800">{shift.jam_masuk}</span>
+                    <span className="w-full inline-block border-t border-dashed border-slate-500 [border-dasharray:80px_20px]"></span>
+                    <span className="text-sm font-medium text-slate-800">{shift.jam_pulang}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         </div>
       </div>
 

@@ -150,6 +150,8 @@ export interface SettingsFormRow extends RowDataPacket {
   jam_pulang: string | null;
   schedule_type: string | null;
   enabled_shifts: { jam_masuk: string; jam_pulang: string }[] | string | null;
+  /** DATE dari MySQL bisa dikembalikan driver sebagai string atau Date */
+  force_holiday_date?: Date | string | null;
 }
 
 /** Baris hanya id (SELECT id FROM ...) */
@@ -185,6 +187,8 @@ export interface SettingsAreaRow extends RowDataPacket {
   jam_masuk?: string;
   jam_pulang?: string;
   enabled_shifts?: { jam_masuk: string; jam_pulang: string }[] | string | null;
+  /** DATE dari MySQL bisa dikembalikan driver sebagai string atau Date */
+  force_holiday_date?: Date | string | null;
 }
 
 /** Baris presensi existing (id, jam_masuk, shift jam untuk validasi pulang) */

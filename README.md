@@ -26,13 +26,17 @@ Aplikasi presensi anak PKL berbasis web (Next.js App Router + MySQL).
 
 2. **Database**
 
-   Buat database `presensi_pkl`, lalu jalankan migration (urut):
+   Buat database `presensi_pkl`, lalu jalankan **semua** migration berurutan (wajib agar presensi & pengaturan hari libur jalan):
 
    - `migrations/001_create_users_sessions.sql`
    - `migrations/002_create_settings.sql`
    - `migrations/003_create_presensi.sql`
+   - `migrations/004_add_shift_settings.sql`
+   - `migrations/005_add_status_kehadiran.sql`
+   - `migrations/006_add_total_jam_kerja.sql`
+   - `migrations/007_add_force_holiday.sql`
 
-   Jangan rename/delete file migration setelah di-push.
+   Jangan rename/delete file migration setelah di-push. Jika presensi/settings tidak tersimpan, pastikan migration 004–007 sudah dijalankan.
 
 3. **Seed admin (opsional)**
 
