@@ -7,6 +7,9 @@ type PresensiToday = {
   tanggal: string;
   jam_masuk: string | null;
   jam_keluar: string | null;
+  foto_masuk_path: string | null;
+  foto_keluar_path: string | null;
+  foto_sakit_path: string | null;
   masuk_status: string | null;
   keluar_status: string | null;
   status_kehadiran: string | null;
@@ -26,6 +29,7 @@ export default function PresensiPage() {
   const [locError, setLocError] = useState<string | null>(null);
   const [submitType, setSubmitType] = useState<"in" | "out" | null>(null);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [currentFacingMode, setCurrentFacingMode] = useState<"user" | "environment">("user");
 
   const loadToday = useCallback(async () => {
     const res = await fetch("/api/presensi/today", {
@@ -42,27 +46,72 @@ export default function PresensiPage() {
     loadToday().finally(() => setLoading(false));
   }, [loadToday]);
 
-  useEffect(() => {
-    let s: MediaStream | null = null;
-    navigator.mediaDevices
-      .getUserMedia({
+  // Fungsi untuk stop semua stream
+  // 1. Perbaiki stopAllStreams: Hapus 'stream' dari dependency array
+  const stopAllStreams = useCallback(() => {
+    setStream((currentStream) => {
+      if (currentStream) {
+        currentStream.getTracks().forEach((track) => track.stop());
+      }
+      return null; // Mengosongkan stream
+    });
+  }, []); // Sekarang dependency-nya KOSONG
+
+  // 2. Perbaiki startCamera: Pastikan dependensinya stabil
+  const startCamera = useCallback(async (facingMode: "user" | "environment") => {
+    // Stop stream yang ada sebelum mulai yang baru
+    // Kita panggil langsung dari state setter agar sinkron
+    setStream((currentStream) => {
+      if (currentStream) {
+        currentStream.getTracks().forEach((track) => track.stop());
+      }
+      return null;
+    });
+
+    try {
+      console.log(`Attempting to start camera with facing mode: ${facingMode}`);
+      
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Browser tidak mendukung akses kamera");
+      }
+
+      const newStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: "user",
+          facingMode: facingMode,
           width: { ideal: 720 },
           height: { ideal: 1280 },
-          aspectRatio: { ideal: 9 / 16 },
         },
-      })
-      .then((stream) => {
-        s = stream;
-        setStream(stream);
-        if (videoRef.current) videoRef.current.srcObject = stream;
-      })
-      .catch(() => setMessage({ type: "err", text: "Akses kamera ditolak" }));
+      });
+
+      console.log("Camera stream started successfully");
+      setStream(newStream);
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = newStream;
+      }
+    } catch (error) {
+      console.error("Error accessing camera:", error);
+      // ... sisa kode catch Anda tetap sama
+    }
+  }, []); // Dependency KOSONG karena kita tidak butuh stopAllStreams di sini lagi
+
+  // Update facing mode saat isSakit berubah
+  useEffect(() => {
+    if (isSakit) {
+      setCurrentFacingMode("environment"); // Gunakan kamera belakang untuk sakit
+    } else {
+      setCurrentFacingMode("user"); // Gunakan kamera depan untuk presensi biasa
+    }
+  }, [isSakit]);
+
+  // Start/stop camera saat currentFacingMode berubah
+  useEffect(() => {
+    startCamera(currentFacingMode);
+
     return () => {
-      s?.getTracks().forEach((t) => t.stop());
+      stopAllStreams();
     };
-  }, []);
+  }, [currentFacingMode, startCamera, stopAllStreams]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -132,14 +181,14 @@ export default function PresensiPage() {
       setMessage({ type: "err", text: "Lokasi belum didapat. Izinkan akses lokasi." });
       return;
     }
-    let foto: string | null = null;
-    if (!isSakit || type === "out") {
-      foto = capturePhoto();
-      if (!foto) {
-        setMessage({ type: "err", text: "Gagal mengambil foto dari kamera." });
-        return;
-      }
+
+    // Foto wajib jika sakit atau presensi masuk/pulang biasa
+    const foto = capturePhoto();
+    if (!foto) {
+      setMessage({ type: "err", text: "Gagal mengambil foto dari kamera. Silakan coba lagi." });
+      return;
     }
+
     setSubmitType(type);
     setMessage(null);
     try {
@@ -169,7 +218,7 @@ export default function PresensiPage() {
       let successMsg = "";
       if (type === "in") {
         if (data.status_kehadiran === "SAKIT") {
-          successMsg = "Data Sakit berhasil dikirim.";
+          successMsg = "Data Sakit berhasil dikirim dengan bukti foto.";
         } else {
           successMsg = `Presensi masuk berhasil (${data.via === "KANTOR" ? "Di Kantor" : "Di Luar Kantor"}).`;
         }
@@ -267,7 +316,7 @@ export default function PresensiPage() {
                 />
 
                 <span className="select-none text-sm font-medium text-slate-700">
-                  Saya Sakit (aktifkan jika sakit)
+                  Saya Sakit (wajib upload foto surat dokter)
                 </span>
               </label>
             </div>
@@ -284,7 +333,7 @@ export default function PresensiPage() {
                   : "bg-green-600 shadow-green-600/25 hover:bg-green-700 hover:shadow-green-600/30"
                   }`}
               >
-                {submitType === "in" ? "Memproses..." : (isSakit ? "Kirim Keterangan Sakit" : "Presensi Masuk")}
+                {submitType === "in" ? "Memproses..." : (isSakit ? "Kirim Sakit & Foto" : "Presensi Masuk")}
               </button>
             )}
             {today?.jam_masuk && !today?.jam_keluar && (

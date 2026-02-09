@@ -93,6 +93,9 @@ export async function POST(request: NextRequest) {
     // if (!lokasiValid) { ... }
 
     const fotoPath = await savePresensiPhoto(foto_base64, session.user.id, "keluar");
+    const fotoSakitPath = (presensiRow.status_kehadiran === 'SAKIT' && !presensiRow.foto_sakit_path)
+      ? fotoPath  // Jika sakit tapi belum ada foto sakit, gunakan foto pulang sebagai foto sakit
+      : null;
 
     // Hitung total jam kerja
     let totalJamKerja = "00:00:00";
@@ -113,8 +116,8 @@ export async function POST(request: NextRequest) {
     }
 
     await pool.execute(
-      `UPDATE presensi SET jam_keluar=?, foto_keluar_path=?, keluar_lat=?, keluar_lng=?, keluar_accuracy=?, keluar_distance_m=?, keluar_status=?, keluar_lokasi_valid=?, total_jam_kerja=? WHERE user_id=? AND tanggal=?`,
-      [now, fotoPath, userLat, userLng, acc, distanceM, keluarStatus, lokasiValid ? 1 : 0, totalJamKerja, session.user.id, today]
+      `UPDATE presensi SET jam_keluar=?, foto_keluar_path=?, keluar_lat=?, keluar_lng=?, keluar_accuracy=?, keluar_distance_m=?, keluar_status=?, keluar_lokasi_valid=?, total_jam_kerja=?, foto_sakit_path=? WHERE user_id=? AND tanggal=?`,
+      [now, fotoPath, userLat, userLng, acc, distanceM, keluarStatus, lokasiValid ? 1 : 0, totalJamKerja, fotoSakitPath, session.user.id, today]
     );
     return NextResponse.json({ success: true, status: keluarStatus });
   } catch (e) {

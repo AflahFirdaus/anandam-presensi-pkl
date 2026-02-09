@@ -85,19 +85,20 @@ export async function POST(request: NextRequest) {
       : null;
     const isHolidayToday = forceHolidayStr === todayJakarta;
 
+    // Hari di timezone Jakarta (0 = Minggu, 6 = Sabtu) agar konsisten dengan pengaturan & user di Indonesia
+    const [yJ, mo, dJ] = todayJakarta.split("-").map(Number);
+    const dayJakarta = new Date(yJ, mo - 1, dJ).getDay();
+
     let activeShifts: { jam_masuk: string; jam_pulang: string }[] = [];
 
     if (isHolidayToday) {
       activeShifts = getShiftsByScheduleType("HOLIDAY");
+    } else if (dayJakarta === 0) {
+      activeShifts = getShiftsByScheduleType("SUNDAY");
+    } else if (dayJakarta === 6) {
+      activeShifts = getShiftsByScheduleType("SATURDAY");
     } else {
-      const day = now.getDay(); // 0 = Sunday, 1 = Monday, ...
-      if (day === 0) {
-        activeShifts = getShiftsByScheduleType("SUNDAY");
-      } else if (day === 6) {
-        activeShifts = getShiftsByScheduleType("SATURDAY");
-      } else {
-        activeShifts = getShiftsByScheduleType("WEEKDAY");
-      }
+      activeShifts = getShiftsByScheduleType("WEEKDAY");
     }
 
     let shiftJamMasuk: string;
@@ -158,6 +159,9 @@ export async function POST(request: NextRequest) {
     let fotoPath: string | null = null;
     if (status_kehadiran !== "SAKIT") {
       fotoPath = await savePresensiPhoto(foto_base64, session.user.id, "masuk");
+    } else {
+      // Simpan foto bukti sakit jika ada
+      fotoPath = await savePresensiPhoto(foto_base64, session.user.id, "sakit");
     }
 
     // Default status attendance
@@ -165,10 +169,10 @@ export async function POST(request: NextRequest) {
 
     await pool.execute(
       `INSERT INTO presensi (
-        user_id, tanggal, jam_masuk, shift_jam_masuk, shift_jam_pulang, 
-        foto_masuk_path, masuk_lat, masuk_lng, masuk_accuracy, 
+        user_id, tanggal, jam_masuk, shift_jam_masuk, shift_jam_pulang,
+        foto_masuk_path, foto_sakit_path, masuk_lat, masuk_lng, masuk_accuracy,
         masuk_distance_m, masuk_status, masuk_lokasi_valid, status_kehadiran
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         session.user.id,
         today,
@@ -176,6 +180,7 @@ export async function POST(request: NextRequest) {
         shiftJamMasuk,
         shiftJamPulang,
         fotoPath,
+        status_kehadiran === 'SAKIT' ? fotoPath : null,
         userLat,
         userLng,
         acc,

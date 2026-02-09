@@ -197,6 +197,8 @@ export interface PresensiExistingRow extends RowDataPacket {
   jam_masuk: Date;
   shift_jam_masuk: string | null;
   shift_jam_pulang: string | null;
+  status_kehadiran: string | null;
+  foto_sakit_path: string | null;
 }
 
 /** Baris jam_keluar */
@@ -212,6 +214,7 @@ export interface PresensiTodayApiRow extends RowDataPacket {
   jam_keluar: Date | null;
   foto_masuk_path: string | null;
   foto_keluar_path: string | null;
+  foto_sakit_path: string | null;
   masuk_status: string | null;
   keluar_status: string | null;
   status_kehadiran: string | null;

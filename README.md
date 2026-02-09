@@ -8,6 +8,7 @@ Aplikasi presensi anak PKL berbasis web (Next.js App Router + MySQL).
 - **Role**: Admin (monitoring, set area/jam, kelola user) dan PKL (presensi masuk/pulang)
 - **Presensi**: foto dari kamera (capture ke canvas) + lokasi geolocation, validasi radius & accuracy
 - **Jam kerja**: admin set jam masuk/pulang; status TEPAT_WAKTU/TELAT (toleransi 15 menit), SESUAI/PULANG_CEPAT
+- **Izin Sakit**: wajib upload bukti foto surat dokter saat presensi sakit, kamera otomatis menggunakan kamera belakang
 
 ## Setup
 
@@ -35,8 +36,9 @@ Aplikasi presensi anak PKL berbasis web (Next.js App Router + MySQL).
    - `migrations/005_add_status_kehadiran.sql`
    - `migrations/006_add_total_jam_kerja.sql`
    - `migrations/007_add_force_holiday.sql`
+   - `migrations/008_add_foto_sakit.sql`
 
-   Jangan rename/delete file migration setelah di-push. Jika presensi/settings tidak tersimpan, pastikan migration 004–007 sudah dijalankan.
+   Jangan rename/delete file migration setelah di-push. Jika presensi/settings tidak tersimpan, pastikan migration 004–008 sudah dijalankan.
 
 3. **Seed admin (opsional)**
 
@@ -63,8 +65,8 @@ Aplikasi presensi anak PKL berbasis web (Next.js App Router + MySQL).
 - `GET /api/settings` — area + jam (untuk presensi)
 - `PUT /api/admin/settings` — admin update area + jam
 - `GET /api/presensi/today` — presensi hari ini (PKL)
-- `POST /api/presensi/in` — presensi masuk (PKL)
-- `POST /api/presensi/out` — presensi pulang (PKL)
+- `POST /api/presensi/in` — presensi masuk (PKL) - foto wajib
+- `POST /api/presensi/out` — presensi pulang (PKL) - foto wajib
 - `GET /api/admin/presensi?date=YYYY-MM-DD` — daftar presensi per tanggal (admin)
 - `GET /api/admin/users` — daftar user (admin)
 - `POST /api/admin/users` — tambah user (admin)

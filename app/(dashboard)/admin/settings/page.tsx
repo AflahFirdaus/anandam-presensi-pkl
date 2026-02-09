@@ -2,8 +2,24 @@ import { getSessionFromRequest } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import pool from "@/lib/db";
 import type { SettingsFormRow } from "@/lib/db";
+import type { ScheduleType } from "@/lib/shifts";
 import AdminSettingsForm from "./AdminSettingsForm";
 import Version from "../../components/Version";
+
+/** Hari di timezone Jakarta: 0 = Minggu, 6 = Sabtu */
+function getDayOfWeekJakarta(): number {
+  const now = new Date();
+  const jakartaDateStr = now.toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+  const [y, m, d] = jakartaDateStr.split("-").map(Number);
+  return new Date(y, m - 1, d).getDay();
+}
+
+function getScheduleTypeToday(dayOfWeek: number, forceHoliday: boolean): ScheduleType {
+  if (forceHoliday) return "HOLIDAY";
+  if (dayOfWeek === 0) return "SUNDAY";
+  if (dayOfWeek === 6) return "SATURDAY";
+  return "WEEKDAY";
+}
 
 export default async function AdminSettingsPage() {
   const session = await getSessionFromRequest();
@@ -25,6 +41,16 @@ export default async function AdminSettingsPage() {
         }
       })()
       : [];
+  const forceHolidayCurrent = row?.force_holiday_date
+    ? (() => {
+      const fd = row.force_holiday_date;
+      const stored = typeof fd === "string" ? fd.slice(0, 10) : new Date(fd).toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+      return stored === new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+    })()
+    : false;
+  const dayJakarta = getDayOfWeekJakarta();
+  const scheduleTypeToday = getScheduleTypeToday(dayJakarta, forceHolidayCurrent);
+
   const settings = row
     ? {
       area_name: row.area_name ?? "",
@@ -35,9 +61,7 @@ export default async function AdminSettingsPage() {
       jam_pulang: row.jam_pulang ?? "16:00",
       schedule_type: (row.schedule_type as "WEEKDAY" | "SATURDAY" | "SUNDAY") ?? "WEEKDAY",
       enabled_shifts: enabledShifts as { jam_masuk: string; jam_pulang: string }[],
-      force_holiday_current: row.force_holiday_date
-        ? new Date(row.force_holiday_date).toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" }) === new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" })
-        : false,
+      force_holiday_current: forceHolidayCurrent,
     }
     : {
       area_name: "",
@@ -55,7 +79,7 @@ export default async function AdminSettingsPage() {
     <div className="animate-slide-up w-full">
       <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/50 sm:p-8">
         <h1 className="mb-6 text-xl font-bold text-slate-800">Pengaturan Area & Jam Kerja</h1>
-        <AdminSettingsForm initial={settings} />
+        <AdminSettingsForm initial={settings} scheduleTypeToday={scheduleTypeToday} />
       </div>
       <Version />
     </div>

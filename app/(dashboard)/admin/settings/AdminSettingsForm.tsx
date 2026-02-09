@@ -22,7 +22,7 @@ type Settings = {
 };
 
 
-export default function AdminSettingsForm({ initial }: { initial: Settings }) {
+export default function AdminSettingsForm({ initial, scheduleTypeToday }: { initial: Settings; scheduleTypeToday: ScheduleType }) {
   const [form, setForm] = useState(initial);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -138,10 +138,10 @@ export default function AdminSettingsForm({ initial }: { initial: Settings }) {
         <div className={`flex flex-col gap-4 transition-opacity ${form.force_holiday_current ? "pointer-events-none opacity-50" : ""}`}>
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700">
-              Shift hari ini ({form.force_holiday_current ? "Hari Libur (aktif)" : SCHEDULE_LABELS[form.schedule_type]})
+              Shift hari ini ({form.force_holiday_current ? "Hari Libur (aktif)" : SCHEDULE_LABELS[scheduleTypeToday]})
             </label>
             <ul className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-              {getShiftsByScheduleType(form.force_holiday_current ? "HOLIDAY" : form.schedule_type).map((shift) => {
+              {getShiftsByScheduleType(form.force_holiday_current ? "HOLIDAY" : scheduleTypeToday).map((shift) => {
 
                 return (
                   <li key={shift.label} className="flex items-center justify-between gap-4">

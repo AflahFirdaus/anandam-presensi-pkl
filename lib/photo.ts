@@ -10,7 +10,7 @@ const UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "presensi");
 export async function savePresensiPhoto(
   base64Data: string,
   userId: number,
-  type: "masuk" | "keluar"
+  type: "masuk" | "keluar" | "sakit"
 ): Promise<string> {
   const match = base64Data.match(/^data:image\/(\w+);base64,(.+)$/);
   const ext = match ? (match[1] === "jpeg" ? "jpg" : match[1]) : "jpg";
