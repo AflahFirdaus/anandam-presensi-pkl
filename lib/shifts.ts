@@ -18,11 +18,11 @@ export const WEEKDAY_SHIFTS: ShiftOption[] = [
   { jam_masuk: "13:00", jam_pulang: "21:00", label: "13:00 - 21:00" },
 ];
 
-/** Sabtu: 8-15, 10-17, 13-21 */
+/** Sabtu: 8-15, 10-17, 14-21 */
 export const SATURDAY_SHIFTS: ShiftOption[] = [
   { jam_masuk: "08:00", jam_pulang: "15:00", label: "08:00 - 15:00" },
   { jam_masuk: "10:00", jam_pulang: "17:00", label: "10:00 - 17:00" },
-  { jam_masuk: "13:00", jam_pulang: "21:00", label: "13:00 - 21:00" },
+  { jam_masuk: "14:00", jam_pulang: "21:00", label: "14:00 - 21:00" },
 ];
 
 /** Minggu */
