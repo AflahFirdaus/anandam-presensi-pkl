@@ -219,3 +219,20 @@ export interface PresensiTodayApiRow extends RowDataPacket {
   keluar_status: string | null;
   status_kehadiran: string | null;
 }
+
+/** Baris izin ganti hari */
+export interface IzinGantiHariRow extends RowDataPacket {
+  id: number;
+  user_id: number;
+  nama: string;
+  username: string;
+  tanggal_mulai: string;
+  jam_mulai: string;
+  tanggal_selesai: string;
+  jam_selesai: string;
+  alasan: string;
+  status: string;
+  foto_bukti: string | null;
+  created_at: Date;
+  updated_at: Date;
+}

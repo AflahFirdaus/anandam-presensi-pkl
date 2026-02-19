@@ -116,6 +116,7 @@ export function SidebarNav({
   const pklItems: NavItem[] = [
     { href: "/", label: "Beranda", icon: <IconHome /> },
     { href: "/presensi", label: "Presensi", icon: <IconCamera /> },
+    { href: "/izin", label: "Izin", icon: <IconCalendar /> },
   ];
 
   const items = user.role === "ADMIN" ? adminItems : pklItems;
