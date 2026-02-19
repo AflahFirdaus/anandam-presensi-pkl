@@ -220,19 +220,25 @@ export interface PresensiTodayApiRow extends RowDataPacket {
   status_kehadiran: string | null;
 }
 
-/** Baris izin ganti hari */
-export interface IzinGantiHariRow extends RowDataPacket {
+/** Baris tabel izin (SAKIT / TUKAR_SHIFT) */
+export interface IzinRow extends RowDataPacket {
   id: number;
   user_id: number;
-  nama: string;
-  username: string;
-  tanggal_mulai: string;
-  jam_mulai: string;
-  tanggal_selesai: string;
-  jam_selesai: string;
+  jenis_izin: "SAKIT" | "TUKAR_SHIFT";
+  tanggal_izin: string;
   alasan: string;
-  status: string;
   foto_bukti: string | null;
+  status: "PENDING" | "APPROVED" | "REJECTED";
   created_at: Date;
   updated_at: Date;
+}
+
+/** Baris tabel izin_tanggal_ganti */
+export interface IzinTanggalGantiRow extends RowDataPacket {
+  id: number;
+  izin_id: number;
+  tanggal_ganti: string;
+  jam_mulai: string | null;
+  jam_selesai: string | null;
+  created_at: Date;
 }

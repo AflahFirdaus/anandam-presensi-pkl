@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useMemo, useEffect } from "react";
 import { ModalDeletePresensi, ModalInfo } from "../components/Modal";
-import { DownloadIcon, TrashIcon, SearchIcon, CalendarIcon, FilterIcon } from "lucide-react";
+import { DownloadIcon, TrashIcon, SearchIcon, CalendarIcon, FilterIcon, Stethoscope, RefreshCw, ImageIcon } from "lucide-react";
 
 const PER_PAGE = 30;
 
@@ -45,6 +45,17 @@ type Row = {
   masuk_lokasi_valid: number | null;
 };
 
+type IzinRow = {
+  id: number;
+  user_id: number;
+  nama: string;
+  username: string;
+  jenis_izin: string;
+  tanggal_izin: string;
+  alasan: string;
+  foto_bukti: string | null;
+};
+
 function formatTotalJamKerja(jam_masuk: string | Date | null, jam_keluar: string | Date | null): string {
   if (!jam_masuk || !jam_keluar) return "-";
   const start = new Date(jam_masuk).getTime();
@@ -59,10 +70,12 @@ function formatTotalJamKerja(jam_masuk: string | Date | null, jam_keluar: string
 export default function AdminPresensiList({
   initialDate,
   initialList,
+  initialIzinList = [],
   initialStatusFilter = 'ALL',
 }: {
   initialDate: string;
   initialList: Row[];
+  initialIzinList?: IzinRow[];
   initialStatusFilter?: 'ALL' | 'SAKIT' | 'KANTOR' | 'LUAR_KANTOR';
 }) {
   const router = useRouter();
@@ -81,6 +94,7 @@ export default function AdminPresensiList({
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [openPhoto, setOpenPhoto] = useState<string | null>(null);
+  const [openIzinPhoto, setOpenIzinPhoto] = useState<string | null>(null);
 
   // Sync state if prop changes (e.g. navigation)
   useEffect(() => {
@@ -304,8 +318,64 @@ export default function AdminPresensiList({
           </div>
         </div>
       </div>
-      {initialList.length === 0 ? (
-        <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-slate-600">Tidak ada presensi pada tanggal ini.</p>
+      {initialIzinList.length > 0 && (
+        <div className="mb-6 rounded-xl border border-violet-200/80 bg-gradient-to-br from-violet-50/80 to-fuchsia-50/50 p-4 shadow-sm">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <RefreshCw className="h-4 w-4 text-violet-600" />
+            Izin untuk tanggal ini ({initialIzinList.length})
+          </h2>
+          <div className="flex flex-wrap gap-3">
+            {initialIzinList.map((iz) => (
+              <div
+                key={iz.id}
+                className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 shadow-sm ${
+                  iz.jenis_izin === "SAKIT"
+                    ? "border-red-200/80 bg-red-50/80"
+                    : "border-blue-200/80 bg-blue-50/80"
+                }`}
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/80">
+                  {iz.jenis_izin === "SAKIT" ? (
+                    <Stethoscope className="h-4 w-4 text-red-600" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 text-blue-600" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-slate-800">{iz.nama}</p>
+                  <p className="text-xs text-slate-500">{iz.username}</p>
+                  <span
+                    className={`mt-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      iz.jenis_izin === "SAKIT" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"
+                    }`}
+                  >
+                    {iz.jenis_izin === "SAKIT" ? "Izin Sakit" : "Tukar Shift"}
+                  </span>
+                </div>
+                {iz.foto_bukti && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenIzinPhoto(
+                        iz.foto_bukti!.startsWith("data:") ? iz.foto_bukti! : `/${iz.foto_bukti}`
+                      )
+                    }
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white transition hover:ring-2 hover:ring-violet-400"
+                    title="Lihat bukti"
+                  >
+                    <ImageIcon className="h-5 w-5 text-slate-500" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {initialList.length === 0 && initialIzinList.length === 0 ? (
+        <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-slate-600">Tidak ada presensi dan tidak ada izin pada tanggal ini.</p>
+      ) : initialList.length === 0 ? (
+        <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-slate-600">Tidak ada presensi pada tanggal ini. (Hanya ada izin di atas.)</p>
       ) : (
         <>
           <p className="mb-3 text-sm text-slate-600">
@@ -402,19 +472,31 @@ export default function AdminPresensiList({
               </tbody>
             </table>
           </div>
-          {openPhoto && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-              <div className="relative max-w-3xl rounded-xl bg-white p-1 shadow-xl">
+          {(openPhoto || openIzinPhoto) && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+              onClick={() => {
+                setOpenPhoto(null);
+                setOpenIzinPhoto(null);
+              }}
+            >
+              <div
+                className="relative max-w-3xl rounded-xl bg-white p-1 shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <button
-                  onClick={() => setOpenPhoto(null)}
+                  onClick={() => {
+                    setOpenPhoto(null);
+                    setOpenIzinPhoto(null);
+                  }}
                   className="absolute right-3 top-1 rounded-md p-1 text-4xl font-bold text-slate-600 hover:text-slate-900"
                   aria-label="Tutup"
                 >
                   ×
                 </button>
                 <img
-                  src={openPhoto}
-                  alt="Bukti Presensi"
+                  src={openPhoto ?? openIzinPhoto ?? ""}
+                  alt="Bukti"
                   className="max-h-[80vh] w-full rounded-lg object-contain"
                 />
               </div>

@@ -22,12 +22,11 @@ export async function POST(request: NextRequest) {
   }
   try {
     const body = await request.json();
-    const { foto_base64, lat, lng, accuracy, status_kehadiran } = body; // Add status_kehadiran
+    const { foto_base64, lat, lng, accuracy } = body;
 
-    // Validasi basic
-    if ((status_kehadiran !== "SAKIT" && !foto_base64) || lat == null || lng == null || accuracy == null) {
+    if (!foto_base64 || lat == null || lng == null || accuracy == null) {
       return NextResponse.json(
-        { error: "foto_base64 (wajib jika tidak sakit), lat, lng, accuracy wajib" },
+        { error: "foto_base64, lat, lng, accuracy wajib" },
         { status: 400 }
       );
     }
@@ -124,16 +123,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fallback logic if no match found
     if (!matched) {
-      if (status_kehadiran !== 'SAKIT') {
-        return NextResponse.json(
-          { error: `Tidak ada jadwal presensi yang cocok saat ini. (Jendela waktu: -${WINDOW_SEBELUM_MENIT} / +${WINDOW_SESUDAH_MENIT} menit dari jam shift).` },
-          { status: 400 }
-        );
-      }
-      // If sakit, take the first available shift or default
-      matched = activeShifts.length > 0 ? activeShifts[0] : { jam_masuk: "08:00", jam_pulang: "16:00" };
+      return NextResponse.json(
+        { error: `Tidak ada jadwal presensi yang cocok saat ini. (Jendela waktu: -${WINDOW_SEBELUM_MENIT} / +${WINDOW_SESUDAH_MENIT} menit dari jam shift).` },
+        { status: 400 }
+      );
     }
 
     shiftJamMasuk = matched.jam_masuk;
@@ -156,16 +150,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let fotoPath: string | null = null;
-    if (status_kehadiran !== "SAKIT") {
-      fotoPath = await savePresensiPhoto(foto_base64, session.user.id, "masuk");
-    } else {
-      // Simpan foto bukti sakit jika ada
-      fotoPath = await savePresensiPhoto(foto_base64, session.user.id, "sakit");
-    }
-
-    // Default status attendance
-    const finalStatusKehadiran = (status_kehadiran === 'SAKIT') ? 'SAKIT' : 'HADIR';
+    const fotoPath = await savePresensiPhoto(foto_base64, session.user.id, "masuk");
 
     await pool.execute(
       `INSERT INTO presensi (
@@ -180,14 +165,14 @@ export async function POST(request: NextRequest) {
         shiftJamMasuk,
         shiftJamPulang,
         fotoPath,
-        status_kehadiran === 'SAKIT' ? fotoPath : null,
+        null,
         userLat,
         userLng,
         acc,
         distanceM,
         masukStatus,
         lokasiValid ? 1 : 0,
-        finalStatusKehadiran
+        "HADIR"
       ]
     );
 
@@ -195,7 +180,6 @@ export async function POST(request: NextRequest) {
       success: true,
       status: masukStatus,
       via: lokasiValid ? "KANTOR" : "LUAR_KANTOR",
-      status_kehadiran: finalStatusKehadiran
     });
   } catch (e: unknown) {
     console.error(e);

@@ -1,46 +1,87 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useState, useEffect, useRef } from "react";
+import { FileText, Calendar, Stethoscope, RefreshCw, Clock, CheckCircle, XCircle, Loader2, History, Send, Plus, Trash2, ImageIcon } from "lucide-react";
+
+type TanggalGantiItem = {
+  tanggal_ganti: string;
+  jam_mulai: string;
+  jam_selesai: string;
+};
 
 type IzinRequest = {
   id: number;
-  tanggal_mulai: string;
-  jam_mulai: string;
-  tanggal_selesai: string;
-  jam_selesai: string;
+  jenis_izin: string;
+  tanggal_izin: string;
   alasan: string;
   status: string;
   foto_bukti: string | null;
   created_at: string;
   nama: string;
   username: string;
+  tanggal_ganti: Array<{ tanggal_ganti: string; jam_mulai: string | null; jam_selesai: string | null }>;
 };
 
-type SubmitFormType = "swap_with_colleague" | "day_off" | "shift_swap";
+type JenisIzin = "SAKIT" | "TUKAR_SHIFT";
+
+const formatDate = (dateString: string | number | Date) => {
+  if (!dateString) return "-";
+  const date = new Date(dateString);
+  return date.toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
 
 export default function IzinPage() {
   const [activeTab, setActiveTab] = useState<"submit" | "history">("submit");
-  const [submitFormType, setSubmitFormType] = useState<SubmitFormType>("swap_with_colleague");
+  const [jenisIzin, setJenisIzin] = useState<JenisIzin>("TUKAR_SHIFT");
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
-  // Form state
-  const [tanggalMulai, setTanggalMulai] = useState("");
-  const [jamMulai, setJamMulai] = useState("");
-  const [tanggalSelesai, setTanggalSelesai] = useState("");
-  const [jamSelesai, setJamSelesai] = useState("");
+  const [tanggalIzin, setTanggalIzin] = useState("");
   const [alasan, setAlasan] = useState("");
-  const [fotoBukti, setFotoBukti] = useState<string | null>(null);
-  const [selectedUser, setSelectedUser] = useState<number | null>(null);
-  const [suggestedUsers, setSuggestedUsers] = useState<{ id: number; nama: string; username: string }[]>([]);
+  const [fotoFile, setFotoFile] = useState<File | null>(null);
+  const [fotoPreviewUrl, setFotoPreviewUrl] = useState<string | null>(null);
+  const fotoPreviewRef = useRef<string | null>(null);
+  const [tanggalGantiList, setTanggalGantiList] = useState<TanggalGantiItem[]>([
+    { tanggal_ganti: "", jam_mulai: "", jam_selesai: "" },
+  ]);
+  
 
-  // Get my requests
   const [myRequests, setMyRequests] = useState<IzinRequest[]>([]);
 
   useEffect(() => {
     fetchMyRequests();
   }, []);
+
+  // Revoke object URL saat ganti file atau unmount (hindari memory leak + ERR_INVALID_URL dari data URL)
+  useEffect(() => {
+    return () => {
+      if (fotoPreviewRef.current) {
+        URL.revokeObjectURL(fotoPreviewRef.current);
+        fotoPreviewRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleFotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (fotoPreviewRef.current) {
+      URL.revokeObjectURL(fotoPreviewRef.current);
+      fotoPreviewRef.current = null;
+    }
+    setFotoPreviewUrl(null);
+    setFotoFile(null);
+    if (file && file.type.startsWith("image/")) {
+      const url = URL.createObjectURL(file);
+      fotoPreviewRef.current = url;
+      setFotoPreviewUrl(url);
+      setFotoFile(file);
+    }
+    e.target.value = "";
+  };
 
   const fetchMyRequests = async () => {
     try {
@@ -52,19 +93,19 @@ export default function IzinPage() {
     }
   };
 
-  const handleUserSearch = async (query: string) => {
-    if (query.length < 2) {
-      setSuggestedUsers([]);
-      return;
-    }
+  const addTanggalGanti = () => {
+    setTanggalGantiList((prev) => [...prev, { tanggal_ganti: "", jam_mulai: "", jam_selesai: "" }]);
+  };
 
-    try {
-      const res = await fetch(`/api/users/search?q=${query}`);
-      const data = await res.json();
-      setSuggestedUsers(data.users || []);
-    } catch (error) {
-      console.error("Error searching users:", error);
-    }
+  const removeTanggalGanti = (index: number) => {
+    if (tanggalGantiList.length <= 1) return;
+    setTanggalGantiList((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const updateTanggalGanti = (index: number, field: keyof TanggalGantiItem, value: string) => {
+    setTanggalGantiList((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
+    );
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -72,18 +113,59 @@ export default function IzinPage() {
     setIsLoading(true);
     setMessage(null);
 
+    if (jenisIzin === "SAKIT") {
+      if (!fotoFile) {
+        setMessage({ type: "err", text: "Foto surat dokter wajib diupload untuk izin sakit." });
+        setIsLoading(false);
+        return;
+      }
+    } else {
+      const validGanti = tanggalGantiList.filter((item) => item.tanggal_ganti.trim() !== "");
+      if (validGanti.length === 0) {
+        setMessage({ type: "err", text: "Minimal satu tanggal ganti harus diisi untuk tukar shift." });
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    const payload: Record<string, unknown> = {
+      jenis_izin: jenisIzin,
+      tanggal_izin: tanggalIzin,
+      alasan: alasan.trim() || "",
+      foto_bukti: null as string | null,
+    };
+    if (jenisIzin === "TUKAR_SHIFT") {
+      const validGanti = tanggalGantiList.filter((item) => item.tanggal_ganti.trim() !== "");
+      payload.tanggal_ganti = validGanti.map((item) => ({
+        tanggal_ganti: item.tanggal_ganti,
+        jam_mulai: item.jam_mulai || null,
+        jam_selesai: item.jam_selesai || null,
+      }));
+    } else {
+      payload.tanggal_ganti = [];
+    }
+
+    // Baca file sebagai base64 hanya saat kirim (hindari data URL panjang di DOM)
+    if (fotoFile) {
+      try {
+        payload.foto_bukti = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve((reader.result as string) || "");
+          reader.onerror = () => reject(new Error("Gagal membaca file"));
+          reader.readAsDataURL(fotoFile);
+        });
+      } catch {
+        setMessage({ type: "err", text: "Gagal membaca file foto." });
+        setIsLoading(false);
+        return;
+      }
+    }
+
     try {
       const res = await fetch("/api/izin/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tanggal_mulai: tanggalMulai,
-          jam_mulai: jamMulai,
-          tanggal_selesai: tanggalSelesai,
-          jam_selesai: jamSelesai,
-          alasan: alasan,
-          foto_bukti: fotoBukti || null,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -96,15 +178,15 @@ export default function IzinPage() {
       setMessage({ type: "ok", text: data.message ?? "Permintaan izin berhasil dikirim" });
       fetchMyRequests();
 
-      // Reset form
-      setTanggalMulai("");
-      setJamMulai("");
-      setTanggalSelesai("");
-      setJamSelesai("");
+      setTanggalIzin("");
       setAlasan("");
-      setFotoBukti(null);
-      setSelectedUser(null);
-      setSuggestedUsers([]);
+      if (fotoPreviewRef.current) {
+        URL.revokeObjectURL(fotoPreviewRef.current);
+        fotoPreviewRef.current = null;
+      }
+      setFotoPreviewUrl(null);
+      setFotoFile(null);
+      setTanggalGantiList([{ tanggal_ganti: "", jam_mulai: "", jam_selesai: "" }]);
     } catch (error) {
       setMessage({ type: "err", text: "Koneksi gagal" });
     } finally {
@@ -114,306 +196,297 @@ export default function IzinPage() {
 
   return (
     <div className="animate-slide-up w-full">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start">
-        <h1 className="mb-4 text-2xl font-bold text-slate-800">Izin Ganti Hari</h1>
-
-        {/* Tabs */}
-        <div className="ml-auto flex rounded-xl bg-slate-100 p-1">
+      {/* Header dengan tab */}
+      <div className="mb-8 rounded-2xl bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-700 p-6 text-white shadow-xl shadow-indigo-900/20">
+        <h1 className="mb-1 text-2xl font-bold tracking-tight">Izin & Cuti</h1>
+        <p className="mb-6 text-sm text-white/80">Ajukan izin sakit atau tukar shift</p>
+        <div className="flex gap-1 rounded-xl bg-white/10 p-1 backdrop-blur-sm">
           <button
             onClick={() => setActiveTab("submit")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              activeTab === "submit"
-                ? "bg-white text-slate-800 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition ${
+              activeTab === "submit" ? "bg-white text-indigo-700 shadow" : "text-white/90 hover:bg-white/10"
             }`}
           >
+            <FileText className="h-4 w-4" />
             Buat Izin Baru
           </button>
           <button
             onClick={() => setActiveTab("history")}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              activeTab === "history"
-                ? "bg-white text-slate-800 shadow-sm"
-                : "text-slate-500 hover:text-slate-700"
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition ${
+              activeTab === "history" ? "bg-white text-indigo-700 shadow" : "text-white/90 hover:bg-white/10"
             }`}
           >
+            <History className="h-4 w-4" />
             Riwayat
           </button>
         </div>
       </div>
 
       {activeTab === "submit" ? (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/50">
-          {/* Form Type Selection */}
-          <div className="mb-6">
-            <label className="mb-3 block text-sm font-medium text-slate-700">Jenis Izin</label>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/30 sm:p-8">
+          <div className="mb-8">
+            <p className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-600">
+              <FileText className="h-4 w-4 text-indigo-500" />
+              Pilih jenis izin
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <button
                 type="button"
-                onClick={() => setSubmitFormType("swap_with_colleague")}
-                className={`rounded-xl border-2 p-4 text-left transition ${
-                  submitFormType === "swap_with_colleague"
-                    ? "border-blue-500 bg-blue-50"
-                    : "border-slate-200 hover:border-slate-300 bg-slate-50"
+                onClick={() => setJenisIzin("SAKIT")}
+                className={`group rounded-2xl border-2 p-5 text-left transition-all ${
+                  jenisIzin === "SAKIT"
+                    ? "border-red-400 bg-gradient-to-br from-red-50 to-rose-50 shadow-lg shadow-red-100"
+                    : "border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-100/50"
                 }`}
               >
-                <div className="mb-2 flex items-center gap-2">
-                  <svg className="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                  </svg>
-                  <span className="font-semibold text-slate-800">Tukar Shift</span>
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-red-100 text-red-600 group-hover:bg-red-200">
+                  <Stethoscope className="h-6 w-6" />
                 </div>
-                <p className="text-xs text-slate-500">
-                  Tukar shift dengan teman kerja
+                <span className="block font-semibold text-slate-800">Izin Sakit</span>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Tidak masuk hari itu, wajib upload foto surat dokter. Tidak ada hutang.
                 </p>
               </button>
-
               <button
                 type="button"
-                onClick={() => setSubmitFormType("day_off")}
-                className={`rounded-xl border-2 p-4 text-left transition ${
-                  submitFormType === "day_off"
-                    ? "border-green-500 bg-green-50"
-                    : "border-slate-200 hover:border-slate-300 bg-slate-50"
+                onClick={() => setJenisIzin("TUKAR_SHIFT")}
+                className={`group rounded-2xl border-2 p-5 text-left transition-all ${
+                  jenisIzin === "TUKAR_SHIFT"
+                    ? "border-indigo-400 bg-gradient-to-br from-indigo-50 to-blue-50 shadow-lg shadow-indigo-100"
+                    : "border-slate-200 bg-slate-50/50 hover:border-slate-300 hover:bg-slate-100/50"
                 }`}
               >
-                <div className="mb-2 flex items-center gap-2">
-                  <svg className="h-5 w-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="font-semibold text-slate-800">Libur Hari Ini</span>
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600 group-hover:bg-indigo-200">
+                  <RefreshCw className="h-6 w-6" />
                 </div>
-                <p className="text-xs text-slate-500">
-                  Izin untuk hari ini saja
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSubmitFormType("shift_swap")}
-                className={`rounded-xl border-2 p-4 text-left transition ${
-                  submitFormType === "shift_swap"
-                    ? "border-purple-500 bg-purple-50"
-                    : "border-slate-200 hover:border-slate-300 bg-slate-50"
-                }`}
-              >
-                <div className="mb-2 flex items-center gap-2">
-                  <svg className="h-5 w-5 text-purple-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-                  </svg>
-                  <span className="font-semibold text-slate-800">Ganti Hari Libur</span>
-                </div>
-                <p className="text-xs text-slate-500">
-                  Tukar hari libur dengan teman
+                <span className="block font-semibold text-slate-800">Tukar Shift</span>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                  Tidak masuk, diganti di hari lain (bisa dicicil).
                 </p>
               </button>
             </div>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleFormSubmit} className="space-y-4">
-            {/* Date Selection */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Tanggal Mulai *
-                </label>
-                <input
-                  type="date"
-                  value={tanggalMulai}
-                  onChange={(e) => setTanggalMulai(e.target.value)}
-                  required
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Jam Mulai *
-                </label>
-                <input
-                  type="time"
-                  value={jamMulai}
-                  onChange={(e) => setJamMulai(e.target.value)}
-                  required
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Tanggal Selesai *
-                </label>
-                <input
-                  type="date"
-                  value={tanggalSelesai}
-                  onChange={(e) => setTanggalSelesai(e.target.value)}
-                  required
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Jam Selesai *
-                </label>
-                <input
-                  type="time"
-                  value={jamSelesai}
-                  onChange={(e) => setJamSelesai(e.target.value)}
-                  required
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                />
-              </div>
+          <form onSubmit={handleFormSubmit} className="space-y-6">
+            <div className="rounded-xl bg-slate-50/80 p-4">
+              <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <Calendar className="h-4 w-4 text-indigo-500" />
+                Tanggal Izin (hari tidak masuk) *
+              </label>
+              <input
+                type="date"
+                value={tanggalIzin}
+                onChange={(e) => setTanggalIzin(e.target.value)}
+                required
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
             </div>
 
-            {/* User Selection (for tukar shift) */}
-            {submitFormType === "swap_with_colleague" && (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Teman Kerja *
+            {jenisIzin === "TUKAR_SHIFT" && (
+              <div className="rounded-xl bg-slate-50/80 p-4">
+                <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <Clock className="h-4 w-4 text-indigo-500" />
+                  Tanggal Ganti *
                 </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Cari nama teman kerja..."
-                    onChange={(e) => handleUserSearch(e.target.value)}
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  {suggestedUsers.length > 0 && (
-                    <div className="absolute left-0 right-0 top-full mt-1 z-10 max-h-60 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-                      {suggestedUsers.map((user) => (
-                        <button
-                          type="button"
-                          key={user.id}
-                          onClick={() => {
-                            setSelectedUser(user.id);
-                            setSuggestedUsers([]);
-                          }}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"
-                        >
-                          {user.nama} ({user.username})
-                        </button>
-                      ))}
+                <p className="mb-3 text-xs text-slate-500">
+                  Hari pengganti ketidakhadiran. Bisa lebih dari satu (misal 8 jam dicicil 2×4 jam).
+                </p>
+                {tanggalGantiList.map((item, index) => (
+                  <div key={index} className="mb-3 flex flex-wrap items-end gap-2 rounded-xl border border-slate-200/80 bg-white p-3">
+                    <div className="min-w-[120px] flex-1">
+                      <input
+                        type="date"
+                        value={item.tanggal_ganti}
+                        onChange={(e) => updateTanggalGanti(index, "tanggal_ganti", e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
                     </div>
-                  )}
-                </div>
-                {selectedUser && (
-                  <p className="mt-1 text-xs text-slate-500">
-                    Teman dipilih: {suggestedUsers.find((u) => u.id === selectedUser)?.nama}
-                  </p>
-                )}
+                    <div className="flex gap-2">
+                      <input
+                        type="time"
+                        value={item.jam_mulai}
+                        onChange={(e) => updateTanggalGanti(index, "jam_mulai", e.target.value)}
+                        className="w-28 rounded-lg border border-slate-200 px-2 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                      />
+                      <input
+                        type="time"
+                        value={item.jam_selesai}
+                        onChange={(e) => updateTanggalGanti(index, "jam_selesai", e.target.value)}
+                        className="w-28 rounded-lg border border-slate-200 px-2 py-2 text-sm focus:border-indigo-500 focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeTanggalGanti(index)}
+                      disabled={tanggalGantiList.length <= 1}
+                      className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-40"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addTanggalGanti}
+                  className="flex items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 transition hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  Tambah tanggal ganti
+                </button>
               </div>
             )}
 
-            {/* Alasan */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                Alasan *
+            <div className="rounded-xl bg-slate-50/80 p-4">
+              <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <FileText className="h-4 w-4 text-indigo-500" />
+                Alasan {jenisIzin === "TUKAR_SHIFT" ? "*" : "(opsional)"}
               </label>
               <textarea
                 value={alasan}
                 onChange={(e) => setAlasan(e.target.value)}
-                required
+                required={jenisIzin === "TUKAR_SHIFT"}
                 rows={3}
-                placeholder="Jelaskan alasan izin ganti hari..."
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                placeholder={jenisIzin === "SAKIT" ? "Opsional" : "Jelaskan alasan izin..."}
+                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm transition focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
             </div>
 
-            {/* Photo Upload */}
-            {submitFormType !== "day_off" && (
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Foto Bukti (opsional)
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        setFotoBukti(reader.result as string);
-                      };
-                      reader.readAsDataURL(file);
-                    }
-                  }}
-                  className="w-full text-sm text-slate-500"
-                />
-                {fotoBukti && (
-                  <div className="mt-2 max-w-xs overflow-hidden rounded-lg border">
-                    <img src={fotoBukti} alt="Bukti" className="h-32 w-full object-cover" />
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="rounded-xl bg-slate-50/80 p-4">
+              <label className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
+                <ImageIcon className="h-4 w-4 text-indigo-500" />
+                {jenisIzin === "SAKIT" ? "Foto surat dokter (wajib)" : "Foto Bukti (opsional)"}
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFotoChange}
+                className="w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-indigo-700 file:transition hover:file:bg-indigo-100"
+              />
+              {fotoPreviewUrl && (
+                <div className="mt-3 max-w-xs overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+                  <img src={fotoPreviewUrl} alt="Preview bukti" className="h-36 w-full object-cover" />
+                </div>
+              )}
+            </div>
 
-            {/* Message */}
             {message && (
-              <div className={`rounded-xl px-4 py-3 text-sm ${message.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+              <div
+                className={`flex items-center gap-2 rounded-xl px-4 py-3 text-sm ${
+                  message.type === "ok"
+                    ? "bg-emerald-50 text-emerald-800"
+                    : "bg-red-50 text-red-700"
+                }`}
+              >
+                {message.type === "ok" ? <CheckCircle className="h-5 w-5 shrink-0" /> : <XCircle className="h-5 w-5 shrink-0" />}
                 {message.text}
               </div>
             )}
 
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full rounded-xl bg-blue-600 px-5 py-2.5 font-medium text-white shadow-md transition hover:bg-blue-700 hover:shadow-lg disabled:opacity-50 disabled:hover:bg-blue-600"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-3.5 font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:from-indigo-700 hover:to-violet-700 hover:shadow-indigo-500/40 disabled:opacity-50 disabled:shadow-none"
             >
+              {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
               {isLoading ? "Memproses..." : "Kirim Permintaan Izin"}
             </button>
           </form>
         </div>
       ) : (
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/50">
-          <h2 className="mb-4 text-lg font-semibold text-slate-800">Riwayat Permintaan Izin</h2>
-
+        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/30 sm:p-8">
+          <h2 className="mb-6 flex items-center gap-2 text-lg font-semibold text-slate-800">
+            <History className="h-5 w-5 text-indigo-500" />
+            Riwayat Permintaan Izin
+          </h2>
           {myRequests.length === 0 ? (
-            <div className="rounded-xl bg-slate-50 px-4 py-8 text-center">
-              <p className="text-sm text-slate-500">Belum ada permintaan izin</p>
+            <div className="flex flex-col items-center justify-center rounded-2xl bg-slate-50/80 py-16 text-center">
+              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-slate-200/80">
+                <FileText className="h-7 w-7 text-slate-500" />
+              </div>
+              <p className="text-slate-600">Belum ada permintaan izin</p>
+              <p className="mt-1 text-sm text-slate-500">Klik &quot;Buat Izin Baru&quot; untuk mengajukan</p>
             </div>
           ) : (
             <div className="space-y-4">
               {myRequests.map((request) => (
                 <div
                   key={request.id}
-                  className="rounded-xl border border-slate-200 p-4 hover:border-slate-300"
+                  className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-white to-slate-50/50 p-5 shadow-sm transition hover:shadow-md"
                 >
-                  <div className="mb-3 flex items-start justify-between">
-                    <div>
-                      <h3 className="font-semibold text-slate-800">
-                        {request.tanggal_mulai} - {request.tanggal_selesai}
-                      </h3>
-                      <p className="text-xs text-slate-500">{request.jam_mulai} - {request.jam_selesai}</p>
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                          request.jenis_izin === "SAKIT" ? "bg-red-100 text-red-600" : "bg-indigo-100 text-indigo-600"
+                        }`}
+                      >
+                        {request.jenis_izin === "SAKIT" ? <Stethoscope className="h-5 w-5" /> : <RefreshCw className="h-5 w-5" />}
+                      </div>
+                      <div>
+                        <span
+                          className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${
+                            request.jenis_izin === "SAKIT" 
+                              ? "bg-red-100 text-red-700" 
+                              : "bg-indigo-100 text-indigo-700"
+                          }`}
+                        >
+                          {request.jenis_izin === "SAKIT" ? "Izin Sakit" : "Tukar Shift"}
+                        </span>
+
+                        <h3 className="mt-1.5 font-semibold text-slate-800">
+                          {/* Perbaikan: Gunakan formatDate di sini */}
+                          Tanggal izin: {formatDate(request.tanggal_izin)}
+                        </h3>
+
+                        {request.jenis_izin === "TUKAR_SHIFT" && request.tanggal_ganti.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            <p className="text-xs font-medium text-slate-700">Jadwal Ganti:</p>
+                            <div className="text-xs text-slate-500">
+                              {request.tanggal_ganti.map((g, idx) => (
+                                <div key={idx} className="flex items-center gap-1">
+                                  <span>• {formatDate(g.tanggal_ganti)}</span>
+                                  <span className="text-slate-400">
+                                    ({g.jam_mulai ?? "??:??"} – {g.jam_selesai ?? "??:??"})
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {request.jenis_izin === "SAKIT" && (
+                          <p className="mt-1 text-xs text-slate-500 italic">
+                            ✨ Tidak ada tanggungan jam (Izin Sakit)
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <span
-                      className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium ${
                         request.status === "PENDING"
-                          ? "bg-amber-100 text-amber-700"
+                          ? "bg-amber-100 text-amber-800"
                           : request.status === "APPROVED"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-red-100 text-red-700"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-red-100 text-red-700"
                       }`}
                     >
+                      {request.status === "PENDING" && <Clock className="h-3.5 w-3.5" />}
+                      {request.status === "APPROVED" && <CheckCircle className="h-3.5 w-3.5" />}
+                      {request.status === "REJECTED" && <XCircle className="h-3.5 w-3.5" />}
                       {request.status === "PENDING" ? "Menunggu" : request.status === "APPROVED" ? "Disetujui" : "Ditolak"}
                     </span>
                   </div>
-
-                  <p className="mb-3 text-sm text-slate-600">{request.alasan}</p>
-
+                  {request.alasan && <p className="mb-3 text-sm text-slate-600">{request.alasan}</p>}
                   {request.foto_bukti && (
-                    <div className="mb-3 max-w-xs overflow-hidden rounded-lg border">
-                      <img src={request.foto_bukti} alt="Bukti" className="h-32 w-full object-cover" />
+                    <div className="mb-3 max-w-xs overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+                      <img
+                        src={request.foto_bukti.startsWith("data:") ? request.foto_bukti : `/${request.foto_bukti}`}
+                        alt="Bukti"
+                        className="h-32 w-full object-cover"
+                      />
                     </div>
                   )}
-
-                  <div className="flex items-center justify-between text-xs text-slate-400">
-                    <span>Dibuat: {new Date(request.created_at).toLocaleDateString("id-ID")}</span>
-                    <span>{request.nama}</span>
-                  </div>
+                  <p className="text-xs text-slate-400">Dibuat {new Date(request.created_at).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
                 </div>
               ))}
             </div>

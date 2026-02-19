@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import crypto from "crypto";
 import pool from "./db";
-import type { User, UserRole, SessionWithUserRow } from "./db";
+import type { User, SessionWithUserRow } from "./db";
 
 const COOKIE_NAME = process.env.SESSION_COOKIE_NAME ?? "presensi_session";
 const SESSION_MINUTES = parseInt(process.env.SESSION_MINUTES ?? "15");
@@ -30,9 +30,9 @@ export async function getSession(
   if (!sessionId) return null;
   const [rows] = await pool.execute<SessionWithUserRow[]>(
     `SELECT s.id, s.user_id, s.expires_at, u.nama, u.username, u.role, u.is_active, u.created_at, u.updated_at
-     FROM sessions s
-     JOIN users u ON u.id = s.user_id
-     WHERE s.id = ? AND s.expires_at > NOW() AND u.is_active = 1`,
+    FROM sessions s
+    JOIN users u ON u.id = s.user_id
+    WHERE s.id = ? AND s.expires_at > NOW() AND u.is_active = 1`,
     [sessionId]
   );
   if (!rows.length) return null;

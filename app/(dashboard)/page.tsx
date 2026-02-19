@@ -18,24 +18,31 @@ export default async function HomePage() {
     const [[stats]] = await pool.execute<AdminStatsRow[]>(
       `SELECT 
         COUNT(*) as total_masuk,
-        COALESCE(SUM(CASE WHEN masuk_status = "TELAT" AND (status_kehadiran IS NULL OR status_kehadiran != "SAKIT") THEN 1 ELSE 0 END), 0) as telat,
+        COALESCE(SUM(CASE WHEN masuk_status = "TELAT" THEN 1 ELSE 0 END), 0) as telat,
         COALESCE(SUM(CASE WHEN jam_keluar IS NOT NULL THEN 1 ELSE 0 END), 0) as sudah_pulang,
-        COALESCE(SUM(CASE WHEN status_kehadiran = "SAKIT" THEN 1 ELSE 0 END), 0) as sakit,
-        COALESCE(SUM(CASE WHEN status_kehadiran != "SAKIT" AND (masuk_lokasi_valid = 1) THEN 1 ELSE 0 END), 0) as kantor,
-        COALESCE(SUM(CASE WHEN status_kehadiran != "SAKIT" AND (masuk_lokasi_valid != 1 OR masuk_lokasi_valid IS NULL) THEN 1 ELSE 0 END), 0) as luar
+        COALESCE(SUM(CASE WHEN masuk_lokasi_valid = 1 THEN 1 ELSE 0 END), 0) as kantor,
+        COALESCE(SUM(CASE WHEN masuk_lokasi_valid != 1 OR masuk_lokasi_valid IS NULL THEN 1 ELSE 0 END), 0) as luar
        FROM presensi WHERE tanggal = ?`,
+      [today]
+    );
+    const [[izinPending]] = await pool.execute<CountRow[]>(
+      "SELECT COUNT(*) as total FROM izin WHERE status = 'PENDING'"
+    );
+    const [[izinHariIni]] = await pool.execute<CountRow[]>(
+      "SELECT COUNT(*) as total FROM izin WHERE tanggal_izin = ? AND status = 'APPROVED'",
       [today]
     );
     const totalPkl = Number(rowCount?.total ?? 0);
     const totalMasuk = Number(stats?.total_masuk ?? 0);
     const totalTelat = Number(stats?.telat ?? 0);
     const totalPulang = Number(stats?.sudah_pulang ?? 0);
-    const countSakit = Number(stats?.sakit ?? 0);
+    const countIzinPending = Number(izinPending?.total ?? 0);
+    const countIzinHariIni = Number(izinHariIni?.total ?? 0);
     const countKantor = Number(stats?.kantor ?? 0);
     const countLuar = Number(stats?.luar ?? 0);
 
-    const tepatWaktu = totalMasuk - totalTelat - countSakit;
-    const belumPresensi = totalPkl - totalMasuk;
+    const tepatWaktu = totalMasuk - totalTelat;
+    const belumPresensi = Math.max(0, totalPkl - totalMasuk - countIzinHariIni);
 
     return (
       <div className="animate-slide-up w-full">
@@ -60,14 +67,14 @@ export default async function HomePage() {
             <p className="mt-1 text-3xl font-bold text-amber-600">{belumPresensi}</p>
             <p className="mt-1 text-xs text-slate-400">dari {totalPkl} PKL</p>
           </div>
-          <Link href="/admin?status=SAKIT" className="block">
-            <div className="cursor-pointer rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/50 transition hover:border-red-200 hover:bg-red-50 hover:shadow-xl group">
+          <Link href="/admin/izin" className="block">
+            <div className="cursor-pointer rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/50 transition hover:border-violet-200 hover:bg-violet-50 hover:shadow-xl group">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-slate-500 group-hover:text-red-700">Sakit</p>
-                <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                <p className="text-sm font-medium text-slate-500 group-hover:text-violet-700">Izin</p>
+                <div className="h-2 w-2 rounded-full bg-violet-500"></div>
               </div>
-              <p className="mt-2 text-3xl font-bold text-slate-800 group-hover:text-red-900">{countSakit}</p>
-              <p className="mt-1 text-xs text-slate-400 group-hover:text-red-600">Izin Sakit</p>
+              <p className="mt-2 text-3xl font-bold text-slate-800 group-hover:text-violet-900">{countIzinHariIni}</p>
+              <p className="mt-1 text-xs text-slate-400 group-hover:text-violet-600">Menunggu Persetujuan {countIzinPending}</p>
             </div>
           </Link>
 
@@ -145,15 +152,11 @@ export default async function HomePage() {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/50 transition hover:shadow-xl">
           <p className="text-sm font-medium text-slate-500">Status Presensi Hari Ini</p>
-          {presensi?.status_kehadiran === "SAKIT" ? (
-            <>
-              <p className="mt-2 text-lg font-semibold text-red-600">Izin Sakit</p>
-              <p className="mt-1 text-sm text-slate-500">Anda tercatat sakit hari ini.</p>
-            </>
-          ) : !presensi?.jam_masuk ? (
+          {!presensi?.jam_masuk ? (
             <>
               <p className="mt-2 text-lg font-semibold text-amber-600">Belum Absen Masuk</p>
               <p className="mt-1 text-sm text-slate-500">Buka menu Presensi untuk absen masuk (foto + lokasi).</p>
+              <p className="mt-2 text-xs text-slate-400">Untuk izin (sakit/tukar shift) gunakan menu Izin.</p>
             </>
           ) : (
             <>

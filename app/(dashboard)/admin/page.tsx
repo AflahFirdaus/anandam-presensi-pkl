@@ -5,6 +5,17 @@ import type { PresensiListRow } from "@/lib/db";
 import AdminPresensiList from "./AdminPresensiList";
 import Version from "../components/Version";
 
+type IzinForDateRow = {
+  id: number;
+  user_id: number;
+  nama: string;
+  username: string;
+  jenis_izin: string;
+  tanggal_izin: string;
+  alasan: string;
+  foto_bukti: string | null;
+};
+
 export default async function AdminPresensiPage({
   searchParams,
 }: {
@@ -19,6 +30,15 @@ export default async function AdminPresensiPage({
      p.masuk_lat, p.masuk_lng, p.keluar_lat, p.keluar_lng, p.foto_masuk_path, p.foto_keluar_path,
      p.status_kehadiran, p.masuk_lokasi_valid
      FROM presensi p JOIN users u ON u.id = p.user_id WHERE p.tanggal = ? ORDER BY p.jam_masuk ASC`,
+    [tanggal]
+  );
+
+  const [izinRows] = await pool.execute<IzinForDateRow[]>(
+    `SELECT i.id, i.user_id, i.jenis_izin, i.tanggal_izin, i.alasan, i.foto_bukti, u.nama, u.username
+     FROM izin i
+     JOIN users u ON u.id = i.user_id
+     WHERE i.tanggal_izin = ? AND i.status = 'APPROVED'
+     ORDER BY u.nama`,
     [tanggal]
   );
 
@@ -42,12 +62,27 @@ export default async function AdminPresensiPage({
   }));
 
   const initialStatus = (status === 'SAKIT' || status === 'KANTOR' || status === 'LUAR_KANTOR') ? status : 'ALL';
+  const izinList = izinRows.map((r) => ({
+    id: r.id,
+    user_id: r.user_id,
+    nama: r.nama,
+    username: r.username,
+    jenis_izin: r.jenis_izin,
+    tanggal_izin: r.tanggal_izin,
+    alasan: r.alasan,
+    foto_bukti: r.foto_bukti,
+  }));
 
   return (
     <div className="animate-slide-up w-full">
       <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-lg shadow-slate-200/50 sm:p-8">
         <h1 className="mb-6 text-xl font-bold text-slate-800">Presensi per Tanggal</h1>
-        <AdminPresensiList initialDate={tanggal} initialList={list} initialStatusFilter={initialStatus} />
+        <AdminPresensiList
+          initialDate={tanggal}
+          initialList={list}
+          initialIzinList={izinList}
+          initialStatusFilter={initialStatus}
+        />
       </div>
       <Version />
     </div>
